@@ -1,0 +1,201 @@
+# docker-compose.yml — Zonal Cloud infrastructure services
+# Owned by: proxy agent (SPEC section 2)
+# Brings up: Traefik, Postgres, Redis, and the shared network.
+#
+# The API, dashboard, and admin apps are run via npm in dev.
+# Commented stubs at the bottom show how to add them to compose later
+# (e.g., for staging/production or integration testing).
+#
+# Usage:
+#   cp .env.example .env   # fill in real values
+#   docker compose up -d
+#
+# Postgres is reachable by the API at:
+#   - host=postgres  port=5432  (from another container on zonal_net)
+#   - host=localhost port=5432  (from the host machine / npm dev process)
+# Redis is reachable by the API at:
+#   - host=redis     port=6379  (from another container on zonal_net)
+#   - host=localhost port=6379  (from the host machine / npm dev process)
+
+version: "3.9"
+
+# ------------------------------------------------------------------
+# Shared network
+# All infrastructure services and deployed app containers join this
+# network. Traefik watches ONLY this network (SPEC section 6).
+# ------------------------------------------------------------------
+networks:
+  zonal_net:
+    name: zonal_net
+    driver: bridge
+
+# ------------------------------------------------------------------
+# Named volumes
+# ------------------------------------------------------------------
+volumes:
+  postgres_data:
+  redis_data:
+  # VPS (future): uncomment to persist Let's Encrypt certificates.
+  # letsencrypt:
+
+# ------------------------------------------------------------------
+# Services
+# ------------------------------------------------------------------
+services:
+
+  # ----------------------------------------------------------------
+  # Traefik v3 reverse proxy
+  # SPEC section 5: port 80 (entry) + 8080 (dashboard)
+  # SPEC section 6: watches zonal_net for labelled containers
+  # ----------------------------------------------------------------
+  traefik:
+    image: traefik:v3.3
+    container_name: traefik
+    restart: unless-stopped
+    ports:
+      - "80:80"       # HTTP entrypoint (SPEC section 5)
+      - "8080:8080"   # Traefik dashboard (LOCAL only; secure or remove for VPS)
+      # VPS (future): expose HTTPS entrypoint
+      # - "443:443"
+    volumes:
+      # Static config
+      - ./services/proxy/traefik.yml:/etc/traefik/traefik.yml:ro
+      # Docker socket so Traefik can read container labels
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # VPS (future): persist ACME certificates
+      # - letsencrypt:/letsencrypt
+    networks:
+      - zonal_net
+    labels:
+      - "traefik.enable=false"   # Do not route Traefik itself through Traefik.
+
+  # ----------------------------------------------------------------
+  # Postgres 16
+  # SPEC section 5: port 5432
+  # ----------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-zonal}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      POSTGRES_DB: ${POSTGRES_DB:-zonal}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"   # Exposed to host so npm dev process (api) can connect directly.
+    networks:
+      - zonal_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-zonal} -d ${POSTGRES_DB:-zonal}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ----------------------------------------------------------------
+  # Redis 7
+  # SPEC section 5: port 6379
+  # ----------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"   # Exposed to host so npm dev process (api) can connect directly.
+    networks:
+      - zonal_net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    command: redis-server --appendonly yes   # Enable AOF persistence.
+
+  # ----------------------------------------------------------------
+  # Whoami test service
+  # Validates the routing contract end-to-end (SPEC section 6).
+  # After `docker compose up -d`, visit http://whoami.localhost
+  # to confirm Traefik is routing correctly.
+  # Remove or comment out this service once the routing is verified.
+  # ----------------------------------------------------------------
+  whoami:
+    image: traefik/whoami
+    container_name: whoami
+    restart: unless-stopped
+    networks:
+      - zonal_net
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.whoami.rule=Host(`whoami.localhost`)"
+      - "traefik.http.routers.whoami.entrypoints=web"
+      - "traefik.http.services.whoami.loadbalancer.server.port=80"
+
+  # ----------------------------------------------------------------
+  # STUB: API service (run via npm in dev; add to compose for staging)
+  # ----------------------------------------------------------------
+  # api:
+  #   build:
+  #     context: ./apps/api
+  #     dockerfile: Dockerfile
+  #   container_name: api
+  #   restart: unless-stopped
+  #   env_file: .env
+  #   environment:
+  #     DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:${POSTGRES_PORT}/${POSTGRES_DB}
+  #     REDIS_URL: redis://redis:${REDIS_PORT}
+  #     API_PORT: ${API_PORT:-4000}
+  #   ports:
+  #     - "4000:4000"
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #     redis:
+  #       condition: service_healthy
+  #   networks:
+  #     - zonal_net
+  #   labels:
+  #     - "traefik.enable=true"
+  #     - "traefik.http.routers.api.rule=Host(`api.localhost`)"
+  #     - "traefik.http.routers.api.entrypoints=web"
+  #     - "traefik.http.services.api.loadbalancer.server.port=4000"
+
+  # ----------------------------------------------------------------
+  # STUB: Dashboard service (run via npm in dev; add to compose for staging)
+  # SPEC section 5: dashboard dev port 5173
+  # ----------------------------------------------------------------
+  # dashboard:
+  #   build:
+  #     context: ./apps/dashboard
+  #     dockerfile: Dockerfile
+  #   container_name: dashboard
+  #   restart: unless-stopped
+  #   env_file: .env
+  #   networks:
+  #     - zonal_net
+  #   labels:
+  #     - "traefik.enable=true"
+  #     - "traefik.http.routers.dashboard.rule=Host(`dashboard.localhost`)"
+  #     - "traefik.http.routers.dashboard.entrypoints=web"
+  #     - "traefik.http.services.dashboard.loadbalancer.server.port=80"
+
+  # ----------------------------------------------------------------
+  # STUB: Admin service (run via npm in dev; add to compose for staging)
+  # SPEC section 5: admin dev port 5174
+  # ----------------------------------------------------------------
+  # admin:
+  #   build:
+  #     context: ./apps/admin
+  #     dockerfile: Dockerfile
+  #   container_name: admin
+  #   restart: unless-stopped
+  #   env_file: .env
+  #   networks:
+  #     - zonal_net
+  #   labels:
+  #     - "traefik.enable=true"
+  #     - "traefik.http.routers.admin.rule=Host(`admin.localhost`)"
+  #     - "traefik.http.routers.admin.entrypoints=web"
+  #     - "traefik.http.services.admin.loadbalancer.server.port=80"

@@ -1,0 +1,176 @@
+// Prisma schema for Zonal Cloud
+// Backend agent owns this file.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum OrgPlan {
+  free
+  pro
+}
+
+enum OrgStatus {
+  active
+  suspended
+}
+
+enum UserRole {
+  user
+  admin
+  superadmin
+}
+
+enum UserStatus {
+  active
+  suspended
+}
+
+enum AppType {
+  static
+  node
+  fullstack
+  nodered
+}
+
+enum AppSource {
+  git
+  upload
+}
+
+enum AppStatus {
+  idle
+  building
+  live
+  failed
+  stopped
+}
+
+enum DeploymentStatus {
+  queued
+  building
+  live
+  failed
+}
+
+model Org {
+  id        String    @id @default(cuid())
+  name      String
+  slug      String    @unique
+  plan      OrgPlan   @default(free)
+  status    OrgStatus @default(active)
+  createdAt DateTime  @default(now())
+
+  users    User[]
+  projects Project[]
+  quota    Quota?
+}
+
+model User {
+  id           String     @id @default(cuid())
+  orgId        String
+  email        String     @unique
+  passwordHash String
+  role         UserRole   @default(user)
+  status       UserStatus @default(active)
+  createdAt    DateTime   @default(now())
+
+  org       Org        @relation(fields: [orgId], references: [id])
+  projects  Project[]
+  auditLogs AuditLog[]
+}
+
+model Quota {
+  id                  String @id @default(cuid())
+  orgId               String @unique
+  maxApps             Int    @default(5)
+  cpu                 String @default("1")
+  memory              String @default("512m")
+  disk                String @default("5g")
+  buildMinutes        Int    @default(60)
+  maxConcurrentDeploys Int   @default(2)
+
+  org Org @relation(fields: [orgId], references: [id])
+}
+
+model Project {
+  id     String @id @default(cuid())
+  orgId  String
+  userId String
+  name   String
+  slug   String @unique
+
+  org  Org    @relation(fields: [orgId], references: [id])
+  user User   @relation(fields: [userId], references: [id])
+  apps App[]
+}
+
+model App {
+  id         String    @id @default(cuid())
+  projectId  String
+  name       String
+  type       AppType   @default(static)
+  source     AppSource @default(git)
+  repoUrl    String?
+  branch     String?
+  subdomain  String    @unique
+  buildCmd   String?
+  outputDir  String?
+  status     AppStatus @default(idle)
+
+  project      Project      @relation(fields: [projectId], references: [id])
+  deployments  Deployment[]
+  envVars      EnvVar[]
+  deployTokens DeployToken[]
+}
+
+model Deployment {
+  id        String           @id @default(cuid())
+  appId     String
+  ref       String?
+  status    DeploymentStatus @default(queued)
+  imageRef  String?
+  logsRef   String?
+  createdAt DateTime         @default(now())
+
+  app App @relation(fields: [appId], references: [id])
+}
+
+model EnvVar {
+  id       String  @id @default(cuid())
+  appId    String
+  key      String
+  value    String
+  isSecret Boolean @default(false)
+
+  app App @relation(fields: [appId], references: [id])
+
+  @@unique([appId, key])
+}
+
+model DeployToken {
+  id          String    @id @default(cuid())
+  appId       String
+  name        String
+  hashedToken String    @unique
+  lastUsedAt  DateTime?
+
+  app App @relation(fields: [appId], references: [id])
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  actorUserId String?
+  action      String
+  target      String
+  metadata    Json?
+  ip          String?
+  createdAt   DateTime @default(now())
+
+  actor User? @relation(fields: [actorUserId], references: [id])
+}

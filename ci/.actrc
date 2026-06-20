@@ -1,0 +1,19 @@
+# act configuration for Zonal Cloud local CI testing.
+# Place this file in ci/.actrc and pass --actrc ci/.actrc to act.
+# Alternatively, copy it to ~/.actrc for user-wide defaults.
+
+# Use the full ubuntu-latest runner image to match GitHub Actions closely.
+# The medium image (~500 MB) is faster to pull; swap if full image is too large:
+#   -P ubuntu-latest=catthehacker/ubuntu:act-22.04
+-P ubuntu-latest=catthehacker/ubuntu:full-22.04
+
+# On Linux, host.docker.internal does not resolve automatically.
+# This flag injects the host-gateway alias so the workflow can reach localhost:4000.
+# Remove or override with --network host if you prefer the host networking approach.
+--container-options=--add-host=host.docker.internal:host-gateway
+
+# Reuse containers between runs for faster iteration (disable with --no-reuse).
+--reuse
+
+# Do not pull runner images on every run once cached.
+--pull=false

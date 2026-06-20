@@ -1,0 +1,332 @@
+<title>Zonal Cloud — Architecture & Plan</title>
+<style>
+  :root{
+    --bg:#0b0f17; --panel:#121826; --panel2:#0f1420; --ink:#e7edf6; --muted:#9aa7bd;
+    --line:#22304a; --accent:#5b8cff; --accent2:#34d399; --warn:#fbbf24; --danger:#f87171;
+    --chip:#1a2436; --radius:14px; --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Inter,system-ui,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:radial-gradient(1200px 600px at 70% -10%,#15203a 0%,var(--bg) 55%);color:var(--ink);font-family:var(--sans);line-height:1.55;font-size:15px}
+  .wrap{max-width:1080px;margin:0 auto;padding:40px 22px 90px}
+  header.hero{padding:18px 0 10px}
+  .kick{color:var(--accent2);font-weight:700;letter-spacing:.12em;text-transform:uppercase;font-size:12px}
+  h1{font-size:clamp(28px,4.5vw,44px);margin:.2em 0 .15em;line-height:1.05;letter-spacing:-.02em}
+  h1 .glow{background:linear-gradient(90deg,#7aa2ff,#34d399);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .sub{color:var(--muted);max-width:70ch;font-size:16px}
+  .meta{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}
+  .chip{background:var(--chip);border:1px solid var(--line);color:var(--ink);padding:5px 11px;border-radius:999px;font-size:12.5px}
+  .chip b{color:var(--accent2)}
+  h2{font-size:22px;margin:46px 0 6px;letter-spacing:-.01em;display:flex;align-items:center;gap:10px}
+  h2 .n{font-family:var(--mono);font-size:13px;color:var(--accent);border:1px solid var(--line);background:var(--panel2);border-radius:8px;padding:2px 8px}
+  h3{font-size:16px;margin:22px 0 4px;color:#cdd8ec}
+  p{color:#cfd8e8}
+  .lead{color:var(--muted)}
+  .panel{background:linear-gradient(180deg,var(--panel),var(--panel2));border:1px solid var(--line);border-radius:var(--radius);padding:18px 20px;margin:14px 0}
+  .grid{display:grid;gap:14px}
+  @media(min-width:720px){.g2{grid-template-columns:1fr 1fr}.g3{grid-template-columns:1fr 1fr 1fr}}
+  code,.mono{font-family:var(--mono);font-size:12.5px}
+  .tag{display:inline-block;font-family:var(--mono);font-size:11px;padding:2px 7px;border-radius:6px;border:1px solid var(--line);background:var(--panel2);color:var(--muted)}
+  ul{margin:.4em 0 .4em 0;padding-left:1.15em}
+  li{margin:.25em 0}
+  .scroll{overflow-x:auto;border:1px solid var(--line);border-radius:12px;background:#0a0e16}
+  pre{margin:0;padding:16px;font-family:var(--mono);font-size:12.5px;color:#d7e2f5;white-space:pre;min-width:560px}
+  .c-key{color:#7aa2ff}.c-acc{color:#34d399}.c-mut{color:#6f7d96}.c-warn{color:#fbbf24}
+  table{width:100%;border-collapse:collapse;font-size:13.5px}
+  .scroll table{min-width:620px}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.05em}
+  td b{color:#fff}
+  .pill{font-size:11px;padding:2px 8px;border-radius:999px;border:1px solid var(--line)}
+  .p-now{background:#13251c;color:#6ee7b7;border-color:#1f5037}
+  .p-next{background:#1a2336;color:#93b4ff;border-color:#2c4374}
+  .p-later{background:#231a2e;color:#d6a8ff;border-color:#46315e}
+  .step{display:flex;gap:14px;align-items:flex-start;padding:12px 0;border-bottom:1px dashed var(--line)}
+  .step:last-child{border-bottom:0}
+  .step .num{flex:0 0 30px;height:30px;width:30px;border-radius:9px;background:var(--accent);color:#06122e;font-weight:800;display:grid;place-items:center;font-family:var(--mono)}
+  .note{border-left:3px solid var(--warn);background:#1c1708;padding:10px 14px;border-radius:0 10px 10px 0;color:#f1e6c4;font-size:13.5px}
+  .ok{border-left:3px solid var(--accent2);background:#0c1c15;color:#cdeedd}
+  .legend{display:flex;gap:16px;flex-wrap:wrap;color:var(--muted);font-size:12.5px;margin-top:8px}
+  .legend span{display:inline-flex;align-items:center;gap:6px}
+  .dot{width:10px;height:10px;border-radius:3px;display:inline-block}
+  .foot{margin-top:40px;color:var(--muted);font-size:13px;border-top:1px solid var(--line);padding-top:18px}
+  a{color:var(--accent)}
+  .twocol{columns:2;column-gap:26px}
+  @media(max-width:620px){.twocol{columns:1}}
+</style>
+
+<div class="wrap">
+<header class="hero">
+  <div class="kick">Architecture &amp; Roadmap · Draft v1</div>
+  <h1>Zonal Cloud — <span class="glow">a self-hosted PaaS</span><br>for full-stack web deployment</h1>
+  <p class="sub">A Vercel/Render-style platform that builds and runs static frontends, Node.js backends, full-stack apps with databases, and Node-RED instances — in Docker, identically on your local machine and an Ubuntu VPS.</p>
+  <div class="meta">
+    <span class="chip">Runtime: <b>Docker</b> (local + Ubuntu VPS)</span>
+    <span class="chip">Source: <b>Git URL + CLI/zip</b></span>
+    <span class="chip">Apps: <b>Static · Node API · Full-stack · Node-RED</b></span>
+    <span class="chip">Tenancy: <b>multi-user + admin panel</b></span>
+    <span class="chip">CI/CD: <b>GitHub Actions</b></span>
+    <span class="chip">Node <b>v24</b> · Docker <b>29</b></span>
+  </div>
+</header>
+
+<h2><span class="n">01</span> The core loop</h2>
+<p class="lead">Every hosting platform — Vercel, Render, Railway, Fly — is the same five-step loop underneath. We build this loop end-to-end first, then deepen each stage.</p>
+<div class="panel">
+<div class="scroll"><pre><span class="c-mut">┌─ 1 SOURCE ──┐   ┌─ 2 BUILD ───────┐   ┌─ 3 DEPLOY ──────┐   ┌─ 4 ROUTE ─────┐   ┌─ 5 MANAGE ───┐</span>
+ git clone  ──┼──▶ build container ─┼──▶ run container(s) ┼──▶ reverse proxy ┼──▶ dashboard
+ zip upload    │   (npm ci/build)   │   (static / node /  │   subdomain +    │   logs, env,
+               │   isolated, no net │    db / node-red)   │   auto-TLS       │   redeploy,
+               │   after install    │                     │                  │   start/stop
+<span class="c-acc">  INPUT</span>        <span class="c-acc"> ARTIFACT</span>          <span class="c-acc"> RUNNING SVC</span>         <span class="c-acc"> PUBLIC URL</span>        <span class="c-acc"> CONTROL</span></pre></div>
+</div>
+
+<h2><span class="n">02</span> System architecture</h2>
+<p class="lead">Three planes. The <b>control plane</b> is the brain (API + dashboard + DB). The <b>build plane</b> turns code into artifacts in throwaway containers. The <b>data/runtime plane</b> runs user apps behind a routing layer.</p>
+<div class="panel">
+<div class="scroll"><pre>                                  ┌─────────────────────────────────────────────┐
+   Browser / CLI                  │              CONTROL PLANE                   │
+   ┌──────────┐    HTTPS          │  ┌────────────┐   ┌──────────────────────┐  │
+   │ Dashboard│───────────────────┼─▶│  API       │──▶│  Postgres (platform) │  │
+   │ (React)  │                   │  │ (Node/Nest)│   │  users, apps, deploys│  │
+   └──────────┘                   │  └─────┬──────┘   └──────────────────────┘  │
+   ┌──────────┐    REST/WS        │        │ enqueues jobs                       │
+   │ zonal CLI│───────────────────┼────────┤                                     │
+   └──────────┘                   │   ┌────▼─────┐                               │
+                                  │   │  Queue   │ (Redis / BullMQ)              │
+                                  │   └────┬─────┘                               │
+                                  └────────┼────────────────────────────────────┘
+                                           │ picks up job
+                              ┌────────────▼────────────┐
+                              │       BUILD PLANE        │   talks to Docker Engine
+                              │  Builder worker          │   via /var/run/docker.sock
+                              │  • git clone / unzip     │
+                              │  • detect app type       │
+                              │  • build in container    │──┐ pushes image
+                              │  • produce image/artifact│  │
+                              └──────────────────────────┘  ▼
+   Internet ──▶ ┌───────────────────────────────────┐   ┌──────────────────────┐
+   *.zonal.dev  │   ROUTING (Traefik / Caddy)        │◀──│  Local image registry │
+                │   • auto subdomain per app          │   └──────────────────────┘
+                │   • Let's Encrypt TLS (VPS)         │           │ runs
+                │   • HTTP→container by label/host    │           ▼
+                └───────────────┬────────────────────┘   ┌──────────────────────┐
+                                │ routes to              │   RUNTIME PLANE       │
+                                └───────────────────────▶│  app containers       │
+                                                         │  ┌─────┐┌─────┐┌─────┐│
+                                                         │  │stat ││node ││ N-R ││
+                                                         │  └─────┘└──┬──┘└─────┘│
+                                                         │   per-app db (pg)     │
+                                                         └──────────────────────┘</pre></div>
+<div class="legend">
+  <span><i class="dot" style="background:#5b8cff"></i> Control plane (always on)</span>
+  <span><i class="dot" style="background:#34d399"></i> Build plane (ephemeral workers)</span>
+  <span><i class="dot" style="background:#d6a8ff"></i> Runtime plane (user apps)</span>
+</div>
+</div>
+
+<h2><span class="n">03</span> The four app types</h2>
+<p class="lead">Each type is a "recipe": how to detect it, how to build it, and how it runs. Supporting these four cleanly is the heart of the platform.</p>
+<div class="grid g2">
+  <div class="panel">
+    <h3>① Static (React / Vite / Next export) <span class="tag">simplest</span></h3>
+    <ul>
+      <li><b>Detect:</b> <code>vite</code>/<code>react-scripts</code>/<code>next</code> in package.json; build script present.</li>
+      <li><b>Build:</b> <code>npm ci &amp;&amp; npm run build</code> → output dir (<code>dist</code>/<code>build</code>/<code>out</code>).</li>
+      <li><b>Run:</b> serve static files (nginx container or proxy's file server). Cheap, scales trivially.</li>
+    </ul>
+  </div>
+  <div class="panel">
+    <h3>② Node.js backend (Express / Nest / API) <span class="tag">long-running</span></h3>
+    <ul>
+      <li><b>Detect:</b> a <code>start</code> script + server listening on a port.</li>
+      <li><b>Build:</b> <code>npm ci</code> (+ optional build step for TS/Nest).</li>
+      <li><b>Run:</b> container with injected <code>PORT</code> + env vars; health-checked; restart policy.</li>
+    </ul>
+  </div>
+  <div class="panel">
+    <h3>③ Full-stack (frontend + backend + DB) <span class="tag">composed</span></h3>
+    <ul>
+      <li><b>Detect:</b> monorepo or manifest (<code>zonal.yaml</code>) declaring services.</li>
+      <li><b>Build:</b> build each service; provision a <b>Postgres</b> container per app.</li>
+      <li><b>Run:</b> linked containers on a private network; DB URL injected as env.</li>
+    </ul>
+  </div>
+  <div class="panel">
+    <h3>④ Node-RED <span class="tag">dev / flows</span></h3>
+    <ul>
+      <li><b>Detect:</b> selected by user as app type (Node-RED is a fixed runtime image).</li>
+      <li><b>Build:</b> base <code>nodered/node-red</code> image + user flows/settings/credentials.</li>
+      <li><b>Run:</b> persistent volume for <code>/data</code>; editor secured behind auth; per-instance isolation.</li>
+    </ul>
+  </div>
+</div>
+<div class="ok" style="margin-top:14px;border-left:3px solid var(--accent2);padding:10px 14px;border-radius:0 10px 10px 0"><b>Automatic builds via Nixpacks.</b> For types ①–③, the user doesn't write a Dockerfile. <b>Nixpacks</b> (open-source, MIT) inspects the repo, detects the language/framework, generates a build plan, and produces a runnable image. The optional <code>zonal.yaml</code> overrides any guess (build cmd, output dir, env, services). Node-RED (④) is the exception — it runs from a fixed base image plus the user's flows, so it isn't Nixpacks-built.</div>
+
+<h2><span class="n">3.4</span> Two surfaces: user dashboard vs admin panel</h2>
+<p class="lead">A multi-tenant platform needs <b>two</b> distinct frontends. The <b>user dashboard</b> is what every tenant sees — their own apps only. The <b>admin panel</b> is the operator console — it sees and controls <i>everything</i>, across all tenants. They share the API but are gated by role.</p>
+<div class="panel">
+<div class="scroll"><pre>             ┌──────────────────────┐                 ┌────────────────────────────┐
+  tenant ──▶ │   USER DASHBOARD     │                 │      ADMIN PANEL           │ ◀── operator
+             │  role: user          │                 │  role: admin / superadmin  │   (you)
+             ├──────────────────────┤                 ├────────────────────────────┤
+             │ • my projects/apps   │                 │ • ALL users &amp; tenants      │
+             │ • deploy, logs, env  │                 │ • suspend / delete / reset  │
+             │ • my usage           │                 │ • impersonate user          │
+             │ • billing (self)     │                 │ • quotas &amp; plans per tenant │
+             └──────────┬───────────┘                 │ • ALL apps/deploys (stop)   │
+                        │                              │ • platform metrics &amp; health │
+                        │        same API,             │ • audit log                 │
+                        └──────────┐  role-gated  ┌────┤ • global settings           │
+                                   ▼              ▼    └─────────────┬──────────────┘
+                              ┌─────────────────────────────────────▼──────┐
+                              │  API (NestJS) — RBAC middleware on every route│
+                              │  user → own resources · admin → tenant scope  │
+                              │  superadmin → everything + platform config    │
+                              └───────────────────────────────────────────────┘</pre></div>
+</div>
+
+<div class="grid g2">
+  <div class="panel"><h3>Admin panel — capabilities</h3><ul>
+    <li><b>Users:</b> list/search, create, suspend/ban, delete, reset password, force-logout, change role.</li>
+    <li><b>Impersonate:</b> "log in as" a user to debug their apps (audited).</li>
+    <li><b>Tenants / orgs:</b> create orgs, move users, set plan tier.</li>
+    <li><b>Quotas:</b> per-tenant caps — max apps, CPU/RAM/disk, build minutes, concurrent deploys.</li>
+    <li><b>All apps &amp; deployments:</b> view any tenant's apps; stop/restart/redeploy; kill runaway containers.</li>
+    <li><b>Platform health:</b> node/container metrics, queue depth, build success rate, disk usage.</li>
+    <li><b>Audit log:</b> who did what, when (deploys, role changes, impersonations).</li>
+    <li><b>Global settings:</b> registry, Traefik, default build limits, signup open/closed, feature flags.</li>
+  </ul></div>
+  <div class="panel"><h3>Roles &amp; access (RBAC)</h3><ul>
+    <li><b>user</b> — owns projects/apps in their org; sees only their own.</li>
+    <li><b>admin</b> — manages users/apps within an org/tenant (team owner).</li>
+    <li><b>superadmin</b> — full platform control + global settings; the operator (you).</li>
+  </ul>
+  <p class="lead" style="margin-top:8px">Every API route runs through RBAC middleware. The admin panel is a separate React app (or a gated route tree) reachable only to admin/superadmin; the same token carries the role claim.</p>
+  <div class="note" style="margin-top:6px"><b>Safety:</b> destructive admin actions (delete user, wipe app) require confirmation + are written to the immutable audit log. Impersonation sessions are time-boxed and flagged.</div>
+  </div>
+</div>
+
+<h2><span class="n">3.5</span> Auto-deploy via GitHub Actions</h2>
+<p class="lead">Push to your repo → GitHub Actions runs your workflow → it calls Zonal's deploy API with a scoped token → Zonal builds &amp; deploys. The platform exposes a token-authenticated deploy endpoint; the rest is a tiny reusable workflow we ship.</p>
+<div class="panel">
+<div class="scroll"><pre><span class="c-mut"># developer</span>                  <span class="c-mut"># GitHub Actions</span>                 <span class="c-mut"># Zonal Cloud</span>
+git push origin main  ──▶  .github/workflows/deploy.yml  ──▶  POST /v1/deploy
+                            • on: push [main]                 Authorization: Bearer $ZONAL_TOKEN
+                            • build/test (optional)           { app_id, ref, commit }
+                            • call Zonal deploy API   ─────────────┐
+                                                                   ▼
+                                                         enqueue build job
+                                                         build → image → run → route
+                                                                   │
+                            ◀──────── status + live URL ◀──────────┘
+                            (deploy summary in the Actions run)</pre></div>
+<div class="grid g2" style="margin-top:12px">
+  <div><h3>What Zonal provides</h3><ul>
+    <li><b>Deploy API:</b> <code>POST /v1/deploy</code> (token auth, per-app scope).</li>
+    <li><b>Deploy tokens:</b> created in dashboard, stored as a GitHub <i>secret</i> (<code>ZONAL_TOKEN</code>).</li>
+    <li><b>Reusable workflow / action:</b> drop-in <code>deploy.yml</code> users copy into their repo.</li>
+    <li><b>Status callback:</b> deploy result + live URL surfaced back in the Actions log.</li>
+  </ul></div>
+  <div><h3>Two trigger paths (both supported)</h3><ul>
+    <li><b>Push-driven (Actions):</b> user's CI calls our API — works today, no DNS needed.</li>
+    <li><b>Webhook (later):</b> GitHub App that auto-deploys on push without the user editing CI. Step 7.</li>
+  </ul></div>
+</div>
+<div class="ok" style="margin-top:6px;border-left:3px solid var(--accent2);padding:10px 14px;border-radius:0 10px 10px 0"><b>Local CI testing with <code>act</code>.</b> We test the GitHub Actions workflow <i>locally</i> using <a href="https://github.com/nektos/act">nektos/act</a> (open-source) — it runs <code>.github/workflows/deploy.yml</code> inside Docker on this machine, no GitHub cloud and no tunnel needed. Since <code>act</code> runs on the same host as the platform, the workflow reaches the local deploy API directly (host network / <code>host.docker.internal</code>). Once the VPS is live, the real GitHub-hosted Actions use the public API URL — same workflow file, unchanged.</div>
+</div>
+
+<h2><span class="n">04</span> Local &amp; VPS: one design, two configs</h2>
+<p class="lead">You asked for both. The trick is to make environment the <i>only</i> difference — same images, same compose topology, swapped config.</p>
+<div class="scroll"><table>
+<tr><th>Concern</th><th>Local (dev)</th><th>Ubuntu VPS (prod)</th></tr>
+<tr><td><b>Routing domain</b></td><td><code>*.localhost</code> / <code>*.lvh.me</code></td><td><code>*.yourdomain.com</code> (wildcard DNS)</td></tr>
+<tr><td><b>TLS</b></td><td>off / mkcert</td><td>Let's Encrypt via Traefik/Caddy (auto)</td></tr>
+<tr><td><b>Registry</b></td><td>local Docker images</td><td>local registry container (or registry on host)</td></tr>
+<tr><td><b>Persistence</b></td><td>Docker volumes</td><td>Docker volumes + scheduled backups</td></tr>
+<tr><td><b>Secrets</b></td><td><code>.env</code> file</td><td>env + restricted file perms (later: Vault/SOPS)</td></tr>
+<tr><td><b>Orchestration</b></td><td colspan="2">Identical: Docker Engine + Compose for platform; Docker API for user apps</td></tr>
+</table></div>
+
+<h2><span class="n">05</span> Tech stack (proposed)</h2>
+<div class="grid g3">
+  <div class="panel"><h3>Control plane</h3><ul>
+    <li><b>API:</b> Node.js + <b>NestJS</b> (structure, DI, fits Node-everywhere)</li>
+    <li><b>DB:</b> Postgres + Prisma</li>
+    <li><b>Queue:</b> Redis + BullMQ</li>
+    <li><b>Auth:</b> JWT sessions; OAuth (GitHub) later</li>
+  </ul></div>
+  <div class="panel"><h3>Frontends &amp; CLI</h3><ul>
+    <li><b>User dashboard:</b> React + Vite + Tailwind</li>
+    <li><b>Admin panel:</b> React (role-gated) — tenant &amp; user control</li>
+    <li><b>Live logs:</b> WebSockets / SSE</li>
+    <li><b>CLI:</b> Node (<code>zonal deploy</code>, <code>logs</code>, <code>env</code>)</li>
+  </ul></div>
+  <div class="panel"><h3>Build &amp; runtime</h3><ul>
+    <li><b>Engine:</b> Docker (dockerode lib)</li>
+    <li><b>Builder:</b> <b>Nixpacks</b> <span class="tag">MIT · automatic</span> — auto-detects &amp; builds, no Dockerfile</li>
+    <li><b>Proxy:</b> <b>Traefik</b> <span class="tag">MIT · self-hosted</span> — label routing + ACME</li>
+    <li><b>Registry:</b> Docker registry container</li>
+  </ul></div>
+</div>
+<div class="note"><b>Verify during implementation:</b> exact Traefik v3 label syntax, Nixpacks vs hand-written Dockerfiles for build, and Node-RED multi-tenant auth hardening. These are the spots to confirm against current docs when we reach them — the architecture doesn't depend on the specifics.</div>
+
+<h2><span class="n">06</span> Security &amp; isolation (non-negotiables)</h2>
+<div class="twocol">
+<ul>
+  <li><b>Build isolation:</b> each build in its own container; drop network <i>after</i> dependency install; CPU/memory/time limits.</li>
+  <li><b>Runtime isolation:</b> per-app Docker network; no access to the Docker socket from user containers.</li>
+  <li><b>Socket exposure:</b> only the builder/orchestrator touches <code>docker.sock</code> — never user code.</li>
+  <li><b>Resource quotas:</b> per-app CPU/RAM/disk caps; restart limits to stop crash loops.</li>
+  <li><b>Secrets:</b> never baked into images; injected at runtime; encrypted at rest in DB.</li>
+  <li><b>Node-RED:</b> editor behind auth, projects sandboxed, function-node access restricted.</li>
+  <li><b>TLS everywhere on VPS;</b> rate-limit the API; audit log of deploy actions.</li>
+</ul>
+</div>
+
+<h2><span class="n">07</span> Build roadmap</h2>
+<p class="lead">Sequenced so you have something working early and de-risk the hardest parts first. <span class="pill p-now">MVP</span> <span class="pill p-next">expand</span> <span class="pill p-later">production</span></p>
+<div class="panel">
+  <div class="step"><div class="num">0</div><div><b>Scaffold &amp; foundations</b> <span class="pill p-now">MVP</span><br><span class="lead">Monorepo (api, dashboard, engine, cli), docker-compose for Postgres+Redis+Traefik, base data model (User, App, Deployment).</span></div></div>
+  <div class="step"><div class="num">1</div><div><b>Vertical slice: one static app, end-to-end</b> <span class="pill p-now">MVP</span><br><span class="lead">Git URL → build container → static output → Traefik subdomain → reachable at <code>app.localhost</code>. This proves the whole loop.</span></div></div>
+  <div class="step"><div class="num">2</div><div><b>Node.js backend type + live logs + redeploy</b> <span class="pill p-now">MVP</span><br><span class="lead">Long-running container, env vars, health checks, streamed build/runtime logs in the dashboard.</span></div></div>
+  <div class="step"><div class="num">3</div><div><b>CLI + zip upload + deploy API/tokens</b> <span class="pill p-next">expand</span><br><span class="lead"><code>zonal deploy ./app</code> tars and pushes; same pipeline as Git. Ship the token-authed <code>POST /v1/deploy</code> endpoint + deploy-token management.</span></div></div>
+  <div class="step"><div class="num">3.5</div><div><b>GitHub Actions auto-deploy (tested locally via <code>act</code>)</b> <span class="pill p-next">expand</span><br><span class="lead">Reusable <code>deploy.yml</code> workflow, run locally with <a href="https://github.com/nektos/act">nektos/act</a> (no GitHub cloud / no tunnel). Push → Actions → deploy API → live URL.</span></div></div>
+  <div class="step"><div class="num">4</div><div><b>Full-stack + provisioned Postgres + <code>zonal.yaml</code></b> <span class="pill p-next">expand</span><br><span class="lead">Multi-service apps, linked DB container, injected connection string, manifest-driven config.</span></div></div>
+  <div class="step"><div class="num">5</div><div><b>Node-RED app type</b> <span class="pill p-next">expand</span><br><span class="lead">Per-instance Node-RED with persistent volume and secured editor.</span></div></div>
+  <div class="step"><div class="num">5.5</div><div><b>Admin panel + RBAC + quotas + audit log</b> <span class="pill p-next">expand</span><br><span class="lead">Orgs/tenants, roles (user/admin/superadmin), user management (suspend/delete/impersonate), per-tenant quotas, cross-tenant app control, platform metrics, audit log. Role middleware lands earlier (Step 0) — the panel UI here.</span></div></div>
+  <div class="step"><div class="num">6</div><div><b>VPS deployment + wildcard DNS + Let's Encrypt</b> <span class="pill p-later">production</span><br><span class="lead">Ship the same stack to Ubuntu; real domains, auto-TLS, backups.</span></div></div>
+  <div class="step"><div class="num">7</div><div><b>Hardening &amp; ops</b> <span class="pill p-later">production</span><br><span class="lead">Quotas, rollbacks, metrics, billing hooks, GitHub OAuth + auto-deploy on push.</span></div></div>
+</div>
+
+<h2><span class="n">08</span> Data model (starting point)</h2>
+<div class="scroll"><pre><span class="c-key">Org</span>         id, name, slug, plan(free|pro|...), status(active|suspended)   <span class="c-mut"># tenant</span>
+<span class="c-key">User</span>        id, org_id, email, password_hash, <span class="c-acc">role</span>(user|admin|superadmin),
+            status(active|suspended), created_at
+<span class="c-key">Quota</span>       id, org_id, max_apps, cpu, memory, disk, build_minutes,
+            max_concurrent_deploys                              <span class="c-mut"># admin-set per tenant</span>
+<span class="c-key">Project</span>     id, org_id, user_id, name, slug
+<span class="c-key">App</span>         id, project_id, name, <span class="c-acc">type</span>(static|node|fullstack|nodered),
+            source(git|upload), repo_url, branch, subdomain,
+            build_cmd, output_dir, status
+<span class="c-key">Deployment</span>  id, app_id, commit/artifact_ref, status(queued|building|live|failed),
+            image_ref, logs_ref, created_at
+<span class="c-key">EnvVar</span>      id, app_id, key, value(encrypted), is_secret
+<span class="c-key">Service</span>     id, app_id, kind(web|api|db|nodered), port, image_ref   <span class="c-mut"># full-stack</span>
+<span class="c-key">DeployToken</span> id, app_id, name, hashed_token, last_used_at          <span class="c-mut"># GitHub Actions</span>
+<span class="c-key">AuditLog</span>    id, actor_user_id, action, target, metadata, ip, created_at  <span class="c-mut"># admin</span></pre></div>
+
+<div class="foot">
+<b>Decisions locked in (2026-06-20):</b>
+<ul>
+  <li><span class="pill p-now">Done</span> <b>Multi-user</b> from day one — full auth, users own projects/apps.</li>
+  <li><span class="pill p-now">Done</span> <b>Local-first testing</b> with <code>*.localhost</code>; buy domain + VPS later.</li>
+  <li><span class="pill p-now">Done</span> <b>GitHub Actions auto-deploy</b> via token-authed deploy API (self-hosted runner / tunnel for local CI).</li>
+</ul>
+  <li><span class="pill p-now">Done</span> <b>Builder: Nixpacks</b> (MIT, open-source) — automatic detect &amp; build, no Dockerfile; <code>zonal.yaml</code> overrides; Node-RED uses a fixed base image.</li>
+  <li><span class="pill p-now">Done</span> <b>Proxy: Traefik</b> (MIT, self-hosted) — label-driven dynamic routing + built-in Let's Encrypt.</li>
+</ul>
+<p class="ok" style="padding:10px 14px;border-radius:0 10px 10px 0;margin:8px 0"><b>All major architecture decisions are now locked.</b> Both Nixpacks and Traefik are permissively licensed (MIT) and fully self-hostable — no vendor lock-in.</p>
+<p>Next step on your word: I scaffold the multi-user monorepo and build <b>Step 1 — the static-app vertical slice</b> so you can deploy a real React app to a live local URL.</p>
+</div>
+</div>

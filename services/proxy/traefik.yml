@@ -1,0 +1,80 @@
+# Traefik v3 static configuration for Zonal Cloud
+# This file is the single static config. Traefik must be restarted to pick up changes here.
+# Dynamic config (routing rules, middlewares) comes from Docker labels (see SPEC section 6).
+
+# ------------------------------------------------------------------
+# Global settings
+# ------------------------------------------------------------------
+global:
+  checkNewVersion: false
+  sendAnonymousUsage: false
+
+# ------------------------------------------------------------------
+# Logging
+# ------------------------------------------------------------------
+log:
+  level: INFO         # Set to DEBUG for detailed routing traces during development.
+
+accessLog: {}         # Enable access log to stdout (useful for request tracing).
+
+# ------------------------------------------------------------------
+# API / Dashboard
+# SPEC section 5: Traefik dashboard on port 8080.
+# insecure=true is fine for LOCAL. For VPS, remove insecure and protect
+# the dashboard behind a router with BasicAuth or IP whitelist middleware.
+# ------------------------------------------------------------------
+api:
+  insecure: true      # VPS: set to false; expose dashboard via a labelled router with auth.
+  dashboard: true
+
+# ------------------------------------------------------------------
+# Entrypoints
+# SPEC section 5: port 80 for HTTP entry.
+# ------------------------------------------------------------------
+entryPoints:
+  web:
+    address: ":80"
+    # VPS (future): redirect all HTTP to HTTPS by uncommenting:
+    # http:
+    #   redirections:
+    #     entryPoint:
+    #       to: websecure
+    #       scheme: https
+    #       permanent: true
+
+  # VPS (future): HTTPS entrypoint. Uncomment the entire block below.
+  # websecure:
+  #   address: ":443"
+
+# ------------------------------------------------------------------
+# Providers
+# Docker provider: Traefik watches the Docker socket for containers
+# that have `traefik.enable=true` labels. It ONLY routes containers
+# on the network named `zonal_net` (see SPEC section 6).
+# ------------------------------------------------------------------
+providers:
+  docker:
+    endpoint: "unix:///var/run/docker.sock"
+    exposedByDefault: false       # Containers must opt-in with traefik.enable=true.
+    network: zonal_net            # Watch only containers attached to this network.
+    watch: true                   # React to container start/stop in real time.
+
+  # File provider for any static dynamic config (not needed in this pass, reserved).
+  # file:
+  #   directory: /etc/traefik/dynamic
+  #   watch: true
+
+# ------------------------------------------------------------------
+# Certificate resolvers — LOCAL: unused (HTTP only, *.localhost).
+# VPS (future): uncomment the `letsencrypt` resolver and set the
+# matching `certResolver: letsencrypt` on each router.
+# ------------------------------------------------------------------
+# certificatesResolvers:
+#   letsencrypt:
+#     acme:
+#       email: "admin@yourdomain.com"          # Replace with real admin email.
+#       storage: /letsencrypt/acme.json        # Persisted in a named volume.
+#       tlsChallenge: {}
+#       # Or use httpChallenge if port 80 is reachable:
+#       # httpChallenge:
+#       #   entryPoint: web

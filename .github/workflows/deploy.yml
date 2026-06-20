@@ -1,0 +1,119 @@
+name: Deploy to Zonal Cloud
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      app_id:
+        description: "App ID to deploy (overrides ZONAL_APP_ID variable)"
+        required: false
+        type: string
+
+# All variables used:
+#   vars.ZONAL_APP_ID   - the Zonal app ID (repo or environment variable)
+#   vars.ZONAL_API_BASE - e.g. http://host.docker.internal:4000 (local act)
+#                          or https://api.yourdomain.com (production VPS)
+#   secrets.ZONAL_TOKEN - deploy token created via POST /v1/apps/:id/tokens
+
+jobs:
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Optional: add build/test steps here before deploying.
+      # Example (uncomment when a build is present):
+      # - name: Set up Node
+      #   uses: actions/setup-node@v4
+      #   with:
+      #     node-version: "24"
+      #     cache: "npm"
+      # - name: Install dependencies
+      #   run: npm ci
+      # - name: Run tests
+      #   run: npm test
+
+      - name: Resolve app ID
+        id: resolve
+        run: |
+          APP_ID="${{ inputs.app_id || vars.ZONAL_APP_ID }}"
+          if [ -z "$APP_ID" ]; then
+            echo "ERROR: ZONAL_APP_ID is not set. Set it as a repo variable or pass it as a workflow input."
+            exit 1
+          fi
+          echo "app_id=$APP_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy to Zonal Cloud
+        id: deploy
+        env:
+          ZONAL_TOKEN: ${{ secrets.ZONAL_TOKEN }}
+          ZONAL_API_BASE: ${{ vars.ZONAL_API_BASE }}
+          APP_ID: ${{ steps.resolve.outputs.app_id }}
+          GIT_REF: ${{ github.ref }}
+          GIT_SHA: ${{ github.sha }}
+        run: |
+          if [ -z "$ZONAL_TOKEN" ]; then
+            echo "ERROR: ZONAL_TOKEN secret is not set."
+            exit 1
+          fi
+
+          API_BASE="${ZONAL_API_BASE:-http://host.docker.internal:4000}"
+          DEPLOY_URL="${API_BASE}/v1/apps/${APP_ID}/deploy"
+
+          echo "Triggering deploy for app ${APP_ID} at ref ${GIT_SHA} (${GIT_REF})"
+          echo "Endpoint: ${DEPLOY_URL}"
+
+          RESPONSE=$(curl --silent --show-error --fail-with-body \
+            --max-time 30 \
+            -X POST "$DEPLOY_URL" \
+            -H "Authorization: Bearer ${ZONAL_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "{\"ref\": \"${GIT_SHA}\", \"branch\": \"${GIT_REF}\"}" \
+            -w "\n__HTTP_STATUS__:%{http_code}" \
+          )
+
+          HTTP_STATUS=$(echo "$RESPONSE" | grep -o '__HTTP_STATUS__:[0-9]*' | cut -d: -f2)
+          BODY=$(echo "$RESPONSE" | sed 's/__HTTP_STATUS__:[0-9]*$//')
+
+          echo "HTTP status: ${HTTP_STATUS}"
+          echo "Response body:"
+          echo "$BODY" | python3 -m json.tool 2>/dev/null || echo "$BODY"
+
+          if [ -z "$HTTP_STATUS" ] || [ "$HTTP_STATUS" -lt 200 ] || [ "$HTTP_STATUS" -ge 300 ]; then
+            echo "ERROR: Deploy API returned non-2xx status: ${HTTP_STATUS}"
+            exit 1
+          fi
+
+          # Extract deployment id and status from response for the summary
+          DEPLOYMENT_ID=$(echo "$BODY" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('deployment',{}).get('id','unknown'))" 2>/dev/null || echo "unknown")
+          DEPLOY_STATUS=$(echo "$BODY" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('deployment',{}).get('status','unknown'))" 2>/dev/null || echo "unknown")
+
+          echo "deployment_id=$DEPLOYMENT_ID" >> "$GITHUB_OUTPUT"
+          echo "deploy_status=$DEPLOY_STATUS"   >> "$GITHUB_OUTPUT"
+
+          echo "Deploy triggered successfully."
+          echo "Deployment ID : ${DEPLOYMENT_ID}"
+          echo "Initial status: ${DEPLOY_STATUS}"
+
+      - name: Print deployment summary
+        if: success()
+        env:
+          APP_ID: ${{ steps.resolve.outputs.app_id }}
+          DEPLOYMENT_ID: ${{ steps.deploy.outputs.deployment_id }}
+          DEPLOY_STATUS: ${{ steps.deploy.outputs.deploy_status }}
+        run: |
+          echo "--------------------------------------------"
+          echo "App ID        : ${APP_ID}"
+          echo "Deployment ID : ${DEPLOYMENT_ID}"
+          echo "Status        : ${DEPLOY_STATUS}"
+          echo "Commit        : ${{ github.sha }}"
+          echo "Ref           : ${{ github.ref }}"
+          echo "--------------------------------------------"
+          echo "Check build logs via:"
+          echo "  GET ${{ vars.ZONAL_API_BASE || 'http://localhost:4000' }}/v1/apps/${APP_ID}/logs"
+          echo "--------------------------------------------"
