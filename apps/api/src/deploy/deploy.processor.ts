@@ -9,7 +9,11 @@ import { PrismaService } from '../prisma/prisma.service';
 import { LogStoreService } from './log-store.service';
 import { DEPLOY_QUEUE } from './deploy.constants';
 import { decrypt } from '../common/encrypt.util';
-import { buildAppUrl } from '../common/app-url.util';
+import {
+  buildAppUrl,
+  buildSubdomainRouterLabels,
+  appSubdomainHost,
+} from '../common/app-url.util';
 import { appUploadDir } from '../common/upload-path.util';
 import { DbProvisionService } from '../database/db-provision.service';
 import { MariadbProvisionService } from '../database/mariadb-provision.service';
@@ -367,7 +371,7 @@ export class DeployProcessor extends WorkerHost {
         try {
           await this.info(
             deploymentId,
-            `Routing this instance via Traefik on ${app.subdomain}.localhost (-> container ${NODERED_PORT})`,
+            `Routing this instance via Traefik on ${appSubdomainHost(app.subdomain)} (-> container ${NODERED_PORT})`,
           );
           await this.info(
             deploymentId,
@@ -594,11 +598,11 @@ export class DeployProcessor extends WorkerHost {
     customDomains: { domain: string }[],
   ): Record<string, string> {
     const resolver = process.env.ACME_RESOLVER; // e.g. "letsencrypt" on the VPS
-    const labels: Record<string, string> = {
-      'traefik.enable': 'true',
-      [`traefik.http.routers.${subdomain}.rule`]: `Host(\`${subdomain}.localhost\`)`,
-      [`traefik.http.services.${subdomain}.loadbalancer.server.port`]: String(containerPort),
-    };
+    // Default router on <slug>.<BASE_DOMAIN> (HTTPS on the VPS, HTTP locally).
+    const labels: Record<string, string> = buildSubdomainRouterLabels(
+      subdomain,
+      containerPort,
+    );
 
     for (const { domain } of customDomains) {
       // Router name must be a safe Traefik identifier.

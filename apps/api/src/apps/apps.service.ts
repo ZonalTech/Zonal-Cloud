@@ -27,7 +27,7 @@ import { CreateTokenDto } from './dto/create-token.dto';
 import { AddDomainDto } from './dto/add-domain.dto';
 import { AddFrappeAppDto, SetFrappeVersionDto } from './dto/frappe-app.dto';
 import { AddNodeRedUserDto, UpdateNodeRedUserDto } from './dto/nodered-user.dto';
-import { buildAppUrl } from '../common/app-url.util';
+import { buildAppUrl, buildSubdomainRouterLabels } from '../common/app-url.util';
 import { appUploadDir } from '../common/upload-path.util';
 import { encrypt, decrypt } from '../common/encrypt.util';
 import {
@@ -1493,11 +1493,10 @@ export class AppsService {
 
       await this.ensureImage(docker, MAINTENANCE_IMAGE);
 
-      const labels: Record<string, string> = {
-        'traefik.enable': 'true',
-        [`traefik.http.routers.${subdomain}.rule`]: `Host(\`${subdomain}.localhost\`)`,
-        [`traefik.http.services.${subdomain}.loadbalancer.server.port`]: '80',
-      };
+      const labels: Record<string, string> = buildSubdomainRouterLabels(
+        subdomain,
+        80,
+      );
 
       const networkMode = process.env.DOCKER_NETWORK ?? 'zonal_net';
       const container = await docker.createContainer({
