@@ -1493,9 +1493,11 @@ export class AppsService {
 
       await this.ensureImage(docker, MAINTENANCE_IMAGE);
 
+      // Maintenance nginx listens on 8080 (see MAINTENANCE_NGINX_CONF) to match
+      // the port real app containers use, so the placeholder routes the same way.
       const labels: Record<string, string> = buildSubdomainRouterLabels(
         subdomain,
-        80,
+        8080,
       );
 
       const networkMode = process.env.DOCKER_NETWORK ?? 'zonal_net';

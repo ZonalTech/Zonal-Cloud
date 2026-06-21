@@ -69,7 +69,7 @@ setTimeout(function(){location.reload();},15000);
 // nginx server block: serve the page for every path, with a 503 status so
 // clients/monitors see "temporarily unavailable" rather than a success.
 const MAINTENANCE_NGINX_CONF = `server {
-  listen 80 default_server;
+  listen 8080 default_server;
   server_name _;
   root /usr/share/nginx/html;
   location / { return 503; }

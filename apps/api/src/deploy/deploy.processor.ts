@@ -36,6 +36,11 @@ interface FrappeAppSpec {
   appName?: string | null;
 }
 
+// Port that static/dynamic/fullstack app containers listen on and Traefik
+// routes to. Unprivileged so images running as a non-root user can bind it.
+// The platform injects PORT=this and the generated nginx fallback listens here.
+const APP_LISTEN_PORT = 8080;
+
 export interface DeployJobData {
   deploymentId: string;
   appId: string;
@@ -239,20 +244,40 @@ export class DeployProcessor extends WorkerHost {
       // below; the rollback-safe container swap is the final stage.
       const containerName = `zonal-${app.subdomain}`;
 
-      // Frappe serves on gunicorn:8000; Node-RED's editor on 1880; everything
-      // else on nginx/Node behind :80.
+      // The port Traefik proxies to, per app type:
+      //   frappe   → gunicorn on 8000
+      //   nodered  → editor on 1880
+      //   else (static / dynamic / fullstack) → APP_LISTEN_PORT (8080).
+      // 8080 (not 80) is deliberate: it's unprivileged, so the app works whether
+      // its image runs as root or a non-root user. Both the generated nginx
+      // fallback and a repo's own Node server are made to listen here:
+      //   - the platform injects PORT=<containerPort> below (PaaS convention),
+      //   - the generated fallback templates `listen $PORT` from it.
       const containerPort =
         app.type === 'frappe'
           ? 8000
           : app.type === 'nodered'
             ? NODERED_PORT
-            : 80;
+            : APP_LISTEN_PORT;
       // Every app type — Node-RED included — is routed by Traefik on its
-      // subdomain (container :containerPort behind <subdomain>.localhost), so
+      // subdomain (container :containerPort behind <subdomain>.<BASE_DOMAIN>), so
       // the public URL stays clean with no host port.
       const labels = this.buildTraefikLabels(app.subdomain, containerPort, app.customDomains);
       const networkMode = process.env.DOCKER_NETWORK ?? 'zonal_net';
       const envList = app.envVars.map((v) => `${v.key}=${v.value}`);
+      // Make the app listen on the SAME port Traefik routes to. A $PORT-honouring
+      // server (the PaaS convention, used by the generated fallback and most Node
+      // apps) then binds the right port; without this it picks its own default
+      // (e.g. 3000/8000) that won't match containerPort → 502 Bad Gateway.
+      // Frappe (gunicorn) and Node-RED listen on fixed ports, so skip them. A
+      // user-set PORT env var always wins (we never override an explicit value).
+      if (
+        app.type !== 'nodered' &&
+        app.type !== 'frappe' &&
+        !app.envVars.some((v) => v.key === 'PORT')
+      ) {
+        envList.push(`PORT=${containerPort}`);
+      }
       // Extra HostConfig bits populated per app type (Frappe and Node-RED each
       // need a persistent volume bind for their data dir).
       const extraBinds: string[] = [];
@@ -744,8 +769,8 @@ export class DeployProcessor extends WorkerHost {
     // lands in the build context or the served html root.
     const spaConfStep = [
       'RUN printf \'%s\\n\' \\',
-      "  'server {' \\",
-      "  '    listen 80;' \\",
+      `  'server {' \\`,
+      `  '    listen ${APP_LISTEN_PORT};' \\`,
       "  '    server_name _;' \\",
       "  '    root /usr/share/nginx/html;' \\",
       "  '    index index.html;' \\",
@@ -768,8 +793,8 @@ export class DeployProcessor extends WorkerHost {
       `      echo ${EMPTY_CONTENT_HTML_B64} | base64 -d > /usr/share/nginx/html/index.html && \\`,
       // Serve the placeholder for every path with a 404 — there is no real app.
       "      printf '%s\\n' \\",
-      "        'server {' \\",
-      "        '    listen 80;' \\",
+      `        'server {' \\`,
+      `        '    listen ${APP_LISTEN_PORT};' \\`,
       "        '    server_name _;' \\",
       "        '    root /usr/share/nginx/html;' \\",
       "        '    location / { return 404; }' \\",
@@ -797,7 +822,7 @@ export class DeployProcessor extends WorkerHost {
         spaConfStep,
         'COPY --from=builder /app/' + outputDir + ' /usr/share/nginx/html',
         emptyContentGuardStep,
-        'EXPOSE 80',
+        `EXPOSE ${APP_LISTEN_PORT}`,
         'CMD ["nginx", "-g", "daemon off;"]',
       ].join('\n');
       if (deploymentId) {
@@ -811,7 +836,7 @@ export class DeployProcessor extends WorkerHost {
         spaConfStep,
         'COPY . /usr/share/nginx/html',
         emptyContentGuardStep,
-        'EXPOSE 80',
+        `EXPOSE ${APP_LISTEN_PORT}`,
         'CMD ["nginx", "-g", "daemon off;"]',
       ].join('\n');
       if (deploymentId) {
