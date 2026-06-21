@@ -51,6 +51,23 @@ ENV NODE_ENV=production
 RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates curl git \
     && rm -rf /var/lib/apt/lists/*
 
+# The deploy engine shells out to the `docker` CLI (`docker build`, builder
+# prune, etc.) to build user app images, talking to the HOST daemon via the
+# mounted /var/run/docker.sock. Only the client binary is needed (no daemon).
+ARG DOCKER_CLI_VERSION=28.3.3
+RUN set -eux; \
+    arch="$(dpkg --print-architecture)"; \
+    case "$arch" in \
+      amd64) dockerArch=x86_64 ;; \
+      arm64) dockerArch=aarch64 ;; \
+      *) echo "unsupported arch: $arch" && exit 1 ;; \
+    esac; \
+    curl -fsSL "https://download.docker.com/linux/static/stable/${dockerArch}/docker-${DOCKER_CLI_VERSION}.tgz" -o /tmp/docker.tgz; \
+    tar -xzf /tmp/docker.tgz -C /tmp; \
+    mv /tmp/docker/docker /usr/local/bin/docker; \
+    rm -rf /tmp/docker /tmp/docker.tgz; \
+    docker --version
+
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/prisma ./prisma
