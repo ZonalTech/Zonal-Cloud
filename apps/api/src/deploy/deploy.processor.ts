@@ -671,6 +671,26 @@ export class DeployProcessor extends WorkerHost {
       return;
     }
 
+    // A repo that ships its own Dockerfile wins over nixpacks and the generated
+    // fallback — it's the most explicit statement of how the author wants the
+    // image built. Use it as-is and DON'T write a .dockerignore that excludes
+    // "Dockerfile" (that would drop the repo's own build file from the context).
+    const repoDockerfile = fs.existsSync(path.join(workDir, 'Dockerfile'));
+    if (repoDockerfile) {
+      await this.log(
+        deploymentId,
+        'Repository provides a Dockerfile — building with it (skipping nixpacks/fallback)',
+      );
+      // Respect the repo's own .dockerignore. If it has none, add a minimal one
+      // that only drops .git from the context — crucially NOT "Dockerfile",
+      // which the repo needs in the build context.
+      if (!fs.existsSync(path.join(workDir, '.dockerignore'))) {
+        fs.writeFileSync(path.join(workDir, '.dockerignore'), '.git\n', 'utf8');
+      }
+      await this.runDockerBuild(deploymentId, workDir, imageTag, noCache);
+      return;
+    }
+
     const nixpacksAvailable = await this.checkNixpacks();
     this.debug(deploymentId, `builder selection: nixpacks=${nixpacksAvailable} noCache=${noCache}`);
 
