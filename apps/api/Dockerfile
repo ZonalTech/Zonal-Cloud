@@ -46,7 +46,9 @@ FROM node:24-bookworm-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 
-RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates curl \
+# git is required at runtime: the deploy engine clones user repos and lists
+# their branches via `git ls-remote` / `git clone` (simple-git shells out to it).
+RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates curl git \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /app/node_modules ./node_modules
