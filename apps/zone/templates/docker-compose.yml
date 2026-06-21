@@ -1,0 +1,141 @@
+# Zonal Cloud — base stack (registry deployment).
+#
+# This file is SHIPPED INSIDE the zone npm package and written to the
+# server data dir (default /opt/zonal-cloud) by `zone install`. The server
+# does NOT need the platform source: api/dashboard/admin are pulled as prebuilt
+# images from a registry. Build-from-source lives in the platform repo's own
+# docker-compose.prod.yml instead.
+#
+# Image tags are parameterized:
+#   ZONAL_REGISTRY  e.g. ghcr.io/zonaltech/zonal-cloud   (no trailing slash)
+#   ZONAL_TAG       e.g. latest | v0.1.0 | a git SHA
+#
+# Local HTTP mode. TLS / Let's Encrypt is added by docker-compose.vps.yml when
+# a domain is configured.
+
+networks:
+  zonal_net:
+    name: zonal_net
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+
+services:
+  traefik:
+    image: traefik:v3.7.5
+    container_name: zonal_traefik
+    restart: unless-stopped
+    environment:
+      DOCKER_API_VERSION: "1.44"
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      # Traefik dashboard — bound to LOOPBACK only so it is never publicly
+      # exposed (compose merges ports across -f files, so the VPS overlay can't
+      # remove this; loopback binding keeps it safe there). Reach it via an SSH
+      # tunnel: ssh -L 8080:127.0.0.1:8080 server. In prod the static config
+      # also disables the dashboard (api.dashboard=false).
+      - "127.0.0.1:${TRAEFIK_DASHBOARD_PORT:-8080}:8080"
+    volumes:
+      - ./traefik.yml:/etc/traefik/traefik.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - zonal_net
+    labels:
+      - "traefik.enable=false"
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: zonal_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-zonal}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      POSTGRES_DB: ${POSTGRES_DB:-zonal}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - zonal_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-zonal} -d ${POSTGRES_DB:-zonal}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: zonal_redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    networks:
+      - zonal_net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    image: ${ZONAL_REGISTRY:-ghcr.io/zonaltech/zonal-cloud}/api:${ZONAL_TAG:-latest}
+    container_name: zonal_api
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      PORT: ${PORT:-4000}
+      JWT_SECRET: ${JWT_SECRET}
+      CORS_ORIGINS: ${CORS_ORIGINS}
+    volumes:
+      # The API deploys app containers via dockerode, so it needs the socket.
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - zonal_net
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.zonal-api.rule=Host(`${API_HOST:-api.localhost}`)"
+      - "traefik.http.routers.zonal-api.entrypoints=web"
+      - "traefik.http.services.zonal-api.loadbalancer.server.port=4000"
+
+  dashboard:
+    image: ${ZONAL_REGISTRY:-ghcr.io/zonaltech/zonal-cloud}/dashboard:${ZONAL_TAG:-latest}
+    container_name: zonal_dashboard
+    restart: unless-stopped
+    environment:
+      # Runtime API URL — baked into config.js by the image entrypoint.
+      ZONAL_API_URL: ${VITE_API_URL:-http://localhost:4000}
+    depends_on:
+      - api
+    networks:
+      - zonal_net
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.zonal-dashboard.rule=Host(`${DASHBOARD_HOST:-dashboard.localhost}`)"
+      - "traefik.http.routers.zonal-dashboard.entrypoints=web"
+      - "traefik.http.services.zonal-dashboard.loadbalancer.server.port=80"
+
+  admin:
+    image: ${ZONAL_REGISTRY:-ghcr.io/zonaltech/zonal-cloud}/admin:${ZONAL_TAG:-latest}
+    container_name: zonal_admin
+    restart: unless-stopped
+    environment:
+      ZONAL_API_URL: ${VITE_API_URL:-http://localhost:4000}
+      # Lets the admin account menu link to the user dashboard.
+      ZONAL_DASHBOARD_URL: ${DASHBOARD_URL:-http://localhost:5173}
+    depends_on:
+      - api
+    networks:
+      - zonal_net
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.zonal-admin.rule=Host(`${ADMIN_HOST:-admin.localhost}`)"
+      - "traefik.http.routers.zonal-admin.entrypoints=web"
+      - "traefik.http.services.zonal-admin.loadbalancer.server.port=80"

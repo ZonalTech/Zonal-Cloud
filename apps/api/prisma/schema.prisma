@@ -2,7 +2,10 @@
 // Backend agent owns this file.
 
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  // Use the WASM query engine via a driver adapter so no native engine binary
+  // is downloaded from binaries.prisma.sh (works on slow/locked-down networks).
+  previewFeatures = ["driverAdapters"]
 }
 
 datasource db {
@@ -10,12 +13,12 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum OrgPlan {
+enum OrganizationPlan {
   free
   pro
 }
 
-enum OrgStatus {
+enum OrganizationStatus {
   active
   suspended
 }
@@ -36,6 +39,7 @@ enum AppType {
   node
   fullstack
   nodered
+  frappe
 }
 
 enum AppSource {
@@ -58,13 +62,20 @@ enum DeploymentStatus {
   failed
 }
 
-model Org {
-  id        String    @id @default(cuid())
+model Organization {
+  id        String             @id @default(cuid())
   name      String
-  slug      String    @unique
-  plan      OrgPlan   @default(free)
-  status    OrgStatus @default(active)
-  createdAt DateTime  @default(now())
+  slug      String             @unique
+  plan      OrganizationPlan   @default(free)
+  status    OrganizationStatus @default(active)
+  createdAt DateTime           @default(now())
+
+  // When the subscription lapses. Null = no expiry (e.g. free/perpetual plans).
+  // An org is "expired" when this is set and in the past.
+  subscriptionExpiresAt DateTime?
+  // Last time the org showed activity (deploy, login, API call). Null = never
+  // seen active. Used to flag "dormant" orgs that haven't done anything lately.
+  lastActiveAt          DateTime?
 
   users    User[]
   projects Project[]
@@ -72,22 +83,93 @@ model Org {
 }
 
 model User {
-  id           String     @id @default(cuid())
-  orgId        String
-  email        String     @unique
-  passwordHash String
-  role         UserRole   @default(user)
-  status       UserStatus @default(active)
-  createdAt    DateTime   @default(now())
+  id             String     @id @default(cuid())
+  organizationId String
+  username       String     @unique
+  email          String     @unique
+  passwordHash   String
+  role           UserRole   @default(user)
+  status         UserStatus @default(active)
+  // When true, the user is forced to set a new password before they can use the
+  // app. Set for the auto-seeded default admin and whenever an admin resets a
+  // user's password from the UI. Cleared once the user picks their own password.
+  mustChangePassword Boolean @default(false)
+  createdAt      DateTime   @default(now())
 
-  org       Org        @relation(fields: [orgId], references: [id])
-  projects  Project[]
-  auditLogs AuditLog[]
+  organization  Organization         @relation(fields: [organizationId], references: [id])
+  projects      Project[]
+  auditLogs     AuditLog[]
+  githubAccount GithubAccount?
+  resetTokens   PasswordResetToken[]
+  notifications Notification[]
+}
+
+enum NotificationType {
+  account_impersonated
+  deployment_failed
+}
+
+// An in-app notice shown to a user. Used to tell a user when an admin signed in
+// as them (impersonation) and when one of their deployments fails. Surfaced on
+// the dashboard and shown until they clear it. Generic enough for future types.
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  // The org the recipient belongs to. Lets the admin panel query deployment
+  // failures org-wide / cross-tenant without joining through the user each time.
+  organizationId String?
+  type      NotificationType
+  message   String
+  // Extra context (e.g. the impersonating admin's email, the start time).
+  metadata  Json?
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
+  @@index([organizationId, type, createdAt])
+  // The admin Errors page + TopBar bell (polled every 20s on every page) query
+  // `type='deployment_failed' ORDER BY createdAt desc` cross-tenant (no org), so
+  // the org-leading index above can't serve it. This type-leading one does.
+  @@index([type, createdAt])
+  // The dashboard bell (polled every 20s per user) lists `userId` filtered by
+  // `createdAt >= startOfToday ORDER BY createdAt desc`, and the user's Errors
+  // page lists `userId` + type `ORDER BY createdAt desc`. This serves both.
+  @@index([userId, createdAt])
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  userId    String
+  // SHA-256 hash of the reset token; the plaintext is only sent to the user.
+  tokenHash String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model GithubAccount {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  githubId    String
+  login       String
+  // OAuth access token, encrypted at rest (aes-256-gcm via encrypt.util).
+  accessToken String
+  scope       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
 }
 
 model Quota {
   id                  String @id @default(cuid())
-  orgId               String @unique
+  organizationId      String @unique
   maxApps             Int    @default(5)
   cpu                 String @default("1")
   memory              String @default("512m")
@@ -95,19 +177,19 @@ model Quota {
   buildMinutes        Int    @default(60)
   maxConcurrentDeploys Int   @default(2)
 
-  org Org @relation(fields: [orgId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id])
 }
 
 model Project {
-  id     String @id @default(cuid())
-  orgId  String
-  userId String
-  name   String
-  slug   String @unique
+  id             String @id @default(cuid())
+  organizationId String
+  userId         String
+  name           String
+  slug           String @unique
 
-  org  Org    @relation(fields: [orgId], references: [id])
-  user User   @relation(fields: [userId], references: [id])
-  apps App[]
+  organization Organization @relation(fields: [organizationId], references: [id])
+  user         User         @relation(fields: [userId], references: [id])
+  apps         App[]
 }
 
 model App {
@@ -122,11 +204,169 @@ model App {
   buildCmd   String?
   outputDir  String?
   status     AppStatus @default(idle)
+  createdAt  DateTime  @default(now())
+  // GitHub connection (set when source = git and repo connected via OAuth).
+  githubRepoFullName String?
+  githubWebhookId    String?
+  webhookSecret      String?
 
-  project      Project      @relation(fields: [projectId], references: [id])
-  deployments  Deployment[]
-  envVars      EnvVar[]
-  deployTokens DeployToken[]
+  // Frappe apps (type = frappe). The site name MUST equal the served hostname
+  // (Frappe routes by Host header), so it mirrors the subdomain. The admin
+  // password is generated at create time and stored encrypted; it is decrypted
+  // and injected into the container only at deploy time. frappeVolumeName is the
+  // named Docker volume holding the bench `sites/` dir so the site + its data
+  // survive redeploys.
+  frappeSiteName          String?
+  frappeAdminPasswordEnc  String?
+  frappeVolumeName        String?
+  // The Frappe FRAMEWORK version the whole bench is built on (the
+  // frappe/frappe branch, e.g. "version-15", "version-14", "develop"). Chosen at
+  // create time, used by the deploy pipeline as the bench's --frappe-branch and
+  // the default branch for apps that don't pin one. Defaults to version-15.
+  frappeVersion           String?
+
+  // Node-RED apps (type = nodered). The Node-RED data dir (flows, installed
+  // nodes, settings.js) lives in this named Docker volume so it survives
+  // redeploys/restarts. Editor access is controlled by NodeRedUser records,
+  // which are rendered into settings.js (adminAuth) at deploy time.
+  noderedVolumeName       String?
+  // Each Node-RED instance is published on its own host port (container :1880
+  // mapped to this port on the Docker host), allocated from 1880 upward. Unique
+  // across Node-RED apps so two instances never collide on the host.
+  noderedPort             Int?     @unique
+  // The default "admin" editor account's password, stored encrypted (aes-256-gcm
+  // via encrypt.util) so the dashboard can sign the user straight into the editor
+  // ("Login as administrator") via Node-RED's /auth/token. Kept in sync whenever
+  // the admin account's password is set through the platform. Plaintext is never
+  // persisted.
+  noderedAdminPasswordEnc String?
+
+  project       Project        @relation(fields: [projectId], references: [id])
+  deployments   Deployment[]
+  envVars       EnvVar[]
+  deployTokens  DeployToken[]
+  customDomains CustomDomain[]
+  database      AppDatabase?
+  frappeDatabase FrappeDatabase?
+  frappeApps    FrappeApp[]
+  noderedUsers  NodeRedUser[]
+}
+
+// One editor account for a Node-RED app (type = nodered). Node-RED's
+// `adminAuth` stores users with a bcrypt password hash and a permission level:
+// "*" = full access (deploy/install/edit), "read" = read-only. These records
+// are rendered into the container's settings.js at deploy time (and on every
+// account change, which rewrites settings.js + restarts the container). The
+// password is kept only as a bcrypt hash — the plaintext is never stored.
+model NodeRedUser {
+  id           String   @id @default(cuid())
+  appId        String
+  username     String
+  passwordHash String
+  // "*" = full admin access, "read" = read-only.
+  permission   String   @default("*")
+  createdAt    DateTime @default(now())
+
+  app App @relation(fields: [appId], references: [id], onDelete: Cascade)
+
+  @@unique([appId, username])
+  @@index([appId])
+}
+
+// One Frappe app (a git repo) to be fetched onto a Frappe-type App's bench via
+// `bench get-app`, then installed on its site. An App of type=frappe has one or
+// more of these — Frappe core is always implied/added first by the pipeline, so
+// these are the EXTRA apps (e.g. erpnext, hrms, a custom app). Users add more
+// over time; each addition triggers a rebuild + install-app + migrate on the
+// next deploy. `appName` is the Frappe module name bench installs (derived/known
+// from the repo); when null the pipeline resolves it from the fetched app.
+model FrappeApp {
+  id        String   @id @default(cuid())
+  appId     String
+  gitUrl    String
+  branch    String?
+  // The Frappe app/module name (e.g. "erpnext"). Optional — resolved at deploy
+  // time from the fetched app if not provided.
+  appName   String?
+  // Ordering for get-app (dependencies first). Lower installs earlier.
+  position  Int      @default(0)
+  // Set true once the app has been successfully installed on the site, so the
+  // UI can show install state. Reset to false when (re)added.
+  installed Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  app App @relation(fields: [appId], references: [id], onDelete: Cascade)
+
+  @@index([appId])
+}
+
+// A managed Postgres database + scoped role provisioned for a single app inside
+// the platform's shared Postgres server (the same server the platform itself
+// uses — "reuse the db"). Each app gets its own database AND its own role, so
+// one app cannot read another's data. The role password is stored encrypted at
+// rest (aes-256-gcm via encrypt.util); DATABASE_URL is assembled on demand and
+// injected into the app container at deploy time, never persisted in plaintext.
+model AppDatabase {
+  id           String   @id @default(cuid())
+  appId        String   @unique
+  // The created Postgres database name and login role (both derived from the
+  // app subdomain, sanitized to a safe identifier).
+  dbName       String
+  roleName     String
+  passwordEnc  String
+  // Host/port the APP CONTAINER uses to reach Postgres (in-network service
+  // name, e.g. "postgres:5432"), which differs from how the API connects.
+  host         String   @default("postgres")
+  port         Int      @default(5432)
+  createdAt    DateTime @default(now())
+
+  app App @relation(fields: [appId], references: [id], onDelete: Cascade)
+}
+
+// A managed MariaDB database + scoped user provisioned for a single Frappe app
+// inside the platform's shared MariaDB server. The MariaDB analogue of
+// AppDatabase: Frappe's first-class database is MariaDB, so frappe-type apps get
+// a dedicated database + user here instead of a Postgres one. The user password
+// is stored encrypted at rest (aes-256-gcm via encrypt.util); credentials are
+// assembled on demand and injected into the app container at deploy time, never
+// persisted in plaintext. `bench new-site` additionally needs the MariaDB root
+// password, which is supplied from API env (MARIADB_ADMIN_*), not stored here.
+model FrappeDatabase {
+  id           String   @id @default(cuid())
+  appId        String   @unique
+  // The created MariaDB database name and login user (derived from the app
+  // subdomain, sanitized to a safe identifier).
+  dbName       String
+  userName     String
+  passwordEnc  String
+  // Host/port the APP CONTAINER uses to reach MariaDB (in-network service name,
+  // e.g. "mariadb:3306"), which differs from how the API connects for DDL.
+  host         String   @default("mariadb")
+  port         Int      @default(3306)
+  createdAt    DateTime @default(now())
+
+  app App @relation(fields: [appId], references: [id], onDelete: Cascade)
+}
+
+model CustomDomain {
+  id        String             @id @default(cuid())
+  appId     String
+  domain    String             @unique
+  status    CustomDomainStatus @default(pending)
+  // Random token the user proves ownership with via a TXT record.
+  verifyToken String
+  verifiedAt  DateTime?
+  createdAt   DateTime         @default(now())
+
+  app App @relation(fields: [appId], references: [id], onDelete: Cascade)
+
+  @@index([appId])
+}
+
+enum CustomDomainStatus {
+  pending
+  verified
+  failed
 }
 
 model Deployment {
@@ -139,6 +379,11 @@ model Deployment {
   createdAt DateTime         @default(now())
 
   app App @relation(fields: [appId], references: [id])
+
+  // The Metrics performance query filters `appId IN (...) AND createdAt >= since`
+  // and analyzeLatestForApp does `findFirst({ where: appId }, orderBy createdAt)`.
+  // This composite index serves both without a table scan + in-memory sort.
+  @@index([appId, createdAt])
 }
 
 model EnvVar {
@@ -173,4 +418,34 @@ model AuditLog {
   createdAt   DateTime @default(now())
 
   actor User? @relation(fields: [actorUserId], references: [id])
+
+  // The admin Audit page does `orderBy createdAt desc, take 500` joining `actor`.
+  // Index createdAt for the sort/limit, and actorUserId for the join.
+  @@index([createdAt])
+  @@index([actorUserId])
+}
+
+// Platform-wide key/value settings managed by superadmins (e.g. the MCP/agent
+// API base URL and token). Secret values are stored encrypted at rest.
+model Setting {
+  key       String   @id
+  value     String
+  encrypted Boolean  @default(false)
+  updatedAt DateTime @updatedAt
+}
+
+// Long-lived, revocable token for the MCP agent (not an expiring JWT). Only the
+// SHA-256 hash is stored; the plaintext is shown once at creation. Authenticates
+// to the API with the role/org of the superadmin who created it.
+model AgentToken {
+  id         String    @id @default(cuid())
+  name       String
+  tokenHash  String    @unique
+  // The user/organization the agent acts as (the creating superadmin).
+  userId         String
+  organizationId String
+  role       String    @default("superadmin")
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
 }

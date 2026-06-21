@@ -1,3 +1,29 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Hide the scrollbar while keeping the element scrollable (wheel/touch/keys). */
+@layer utilities {
+  .hide-scrollbar {
+    -ms-overflow-style: none; /* IE/old Edge */
+    scrollbar-width: none; /* Firefox */
+  }
+  .hide-scrollbar::-webkit-scrollbar {
+    display: none; /* Chrome/Safari/WebKit */
+  }
+
+  /* Toast entrance: slide up from the bottom-right and fade in. */
+  @keyframes toast-in {
+    from {
+      opacity: 0;
+      transform: translateY(0.5rem);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  .animate-toast-in {
+    animation: toast-in 0.18s ease-out;
+  }
+}

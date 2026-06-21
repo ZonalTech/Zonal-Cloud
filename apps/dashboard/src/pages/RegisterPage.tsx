@@ -1,4 +1,4 @@
-import React, { FormEvent, useState } from "react";
+import { FormEvent, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../lib/auth";
 
@@ -6,9 +6,10 @@ export function RegisterPage() {
   const { register } = useAuth();
   const navigate = useNavigate();
 
+  const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [orgName, setOrgName] = useState("");
+  const [organizationSlug, setOrganizationSlug] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -17,7 +18,7 @@ export function RegisterPage() {
     setError(null);
     setSubmitting(true);
     try {
-      await register(email, password, orgName);
+      await register(username, email, password, organizationSlug);
       navigate("/apps");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registration failed");
@@ -37,17 +38,18 @@ export function RegisterPage() {
         <div className="bg-white dark:bg-brand-900 rounded-lg border border-brand-200 dark:border-brand-700 p-6 shadow-sm">
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="orgName" className="text-sm font-medium text-brand-700 dark:text-brand-300">
-                Organization name
+              <label htmlFor="username" className="text-sm font-medium text-brand-700 dark:text-brand-300">
+                Username
               </label>
               <input
-                id="orgName"
+                id="username"
                 type="text"
                 required
-                value={orgName}
-                onChange={(e) => setOrgName(e.target.value)}
+                autoComplete="username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
                 className="px-3 py-2 rounded border border-brand-300 dark:border-brand-600 bg-white dark:bg-brand-800 text-brand-900 dark:text-brand-50 text-sm placeholder-brand-400 dark:placeholder-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500 dark:focus:ring-brand-400 transition-colors"
-                placeholder="Acme Corp"
+                placeholder="jdoe"
               />
             </div>
 
@@ -81,6 +83,24 @@ export function RegisterPage() {
                 className="px-3 py-2 rounded border border-brand-300 dark:border-brand-600 bg-white dark:bg-brand-800 text-brand-900 dark:text-brand-50 text-sm placeholder-brand-400 dark:placeholder-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500 dark:focus:ring-brand-400 transition-colors"
                 placeholder="Choose a password"
               />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="organizationSlug" className="text-sm font-medium text-brand-700 dark:text-brand-300">
+                Organization slug
+              </label>
+              <input
+                id="organizationSlug"
+                type="text"
+                required
+                value={organizationSlug}
+                onChange={(e) => setOrganizationSlug(e.target.value)}
+                className="px-3 py-2 rounded border border-brand-300 dark:border-brand-600 bg-white dark:bg-brand-800 text-brand-900 dark:text-brand-50 text-sm placeholder-brand-400 dark:placeholder-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500 dark:focus:ring-brand-400 transition-colors"
+                placeholder="acme-corp"
+              />
+              <p className="text-xs text-brand-400 dark:text-brand-500">
+                The organization you're joining. Ask your admin if you don't know it.
+              </p>
             </div>
 
             {error && (

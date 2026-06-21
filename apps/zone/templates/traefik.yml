@@ -1,0 +1,27 @@
+# Traefik v3 static config — Zonal Cloud LOCAL / HTTP mode.
+# Shipped inside the zone package and written to the server data dir.
+# Dynamic routing comes from Docker labels on the app containers.
+
+global:
+  checkNewVersion: false
+  sendAnonymousUsage: false
+
+log:
+  level: INFO
+
+accessLog: {}
+
+api:
+  insecure: true        # Dashboard on :8080. Disable / protect for production.
+  dashboard: true
+
+entryPoints:
+  web:
+    address: ":80"
+
+providers:
+  docker:
+    endpoint: "unix:///var/run/docker.sock"
+    exposedByDefault: false
+    network: zonal_net
+    watch: true

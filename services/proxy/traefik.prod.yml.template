@@ -1,0 +1,55 @@
+# Traefik v3 static configuration for Zonal Cloud — VPS / production (TLS).
+#
+# This is a TEMPLATE. zonalctl renders it to traefik.prod.yml, substituting
+# __ACME_EMAIL__ with the email passed via `zonalctl install --acme-email ...`
+# (or the superadmin email). Do not edit the rendered file by hand — re-run
+# install or `zonalctl tls` to regenerate it.
+#
+# Differences from the local traefik.yml:
+#   - HTTPS (websecure / :443) entrypoint enabled.
+#   - All HTTP is permanently redirected to HTTPS.
+#   - Let's Encrypt certificate resolver (TLS-ALPN-01 challenge on :443).
+#   - The Traefik dashboard is NOT exposed insecurely.
+
+global:
+  checkNewVersion: false
+  sendAnonymousUsage: false
+
+log:
+  level: INFO
+
+accessLog: {}
+
+# Dashboard is disabled in production. Expose it behind an authenticated,
+# TLS router if you need it.
+api:
+  insecure: false
+  dashboard: false
+
+entryPoints:
+  web:
+    address: ":80"
+    # Redirect every plain-HTTP request to HTTPS.
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+          permanent: true
+  websecure:
+    address: ":443"
+
+providers:
+  docker:
+    endpoint: "unix:///var/run/docker.sock"
+    exposedByDefault: false
+    network: zonal_net
+    watch: true
+
+certificatesResolvers:
+  letsencrypt:
+    acme:
+      email: "__ACME_EMAIL__"
+      storage: /letsencrypt/acme.json
+      # TLS-ALPN-01 works over the 443 entrypoint and needs no extra ports.
+      tlsChallenge: {}

@@ -1,23 +1,36 @@
-import { Controller, Get, Post, Body, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards } from '@nestjs/common';
 import { AdminService } from './admin.service';
-import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { AgentOrJwtGuard } from '../auth/agent-or-jwt.guard';
 import { RolesGuard } from '../common/roles.guard';
 import { Roles } from '../common/roles.decorator';
 import { CurrentUser } from '../common/current-user.decorator';
 import { UpdateQuotaDto } from './dto/update-quota.dto';
+import { CreateOrganizationDto } from './dto/create-organization.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
+import { UpdateUserDto } from './dto/update-user.dto';
+import { UpdateSettingsDto } from './dto/update-settings.dto';
+import { CreateAgentTokenDto } from './dto/create-agent-token.dto';
+import { UpdateInfraSettingsDto } from './dto/update-infra-settings.dto';
+import { FrappeAdminService } from './frappe-admin.service';
+import { RunBenchActionDto, RunSqlDto, SiteAppActionDto } from './dto/root-access.dto';
+import { BulkMigrateDto } from './dto/bulk-migrate.dto';
+import * as path from 'path';
 
 interface AuthUser {
   id: string;
-  orgId: string;
+  organizationId: string;
   role: string;
+  email: string;
 }
 
 @Controller('admin')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(AgentOrJwtGuard, RolesGuard)
 @Roles('admin', 'superadmin')
 export class AdminController {
-  constructor(private readonly adminService: AdminService) {}
+  constructor(
+    private readonly adminService: AdminService,
+    private readonly frappeAdmin: FrappeAdminService,
+  ) {}
 
   @Get('users')
   listUsers() {
@@ -29,6 +42,25 @@ export class AdminController {
     return this.adminService.suspendUser(actor.id, id);
   }
 
+  @Post('users/:id/unsuspend')
+  unsuspendUser(@CurrentUser() actor: AuthUser, @Param('id') id: string) {
+    return this.adminService.unsuspendUser(actor.id, id);
+  }
+
+  @Patch('users/:id')
+  updateUser(
+    @CurrentUser() actor: AuthUser,
+    @Param('id') id: string,
+    @Body() dto: UpdateUserDto,
+  ) {
+    return this.adminService.updateUser(actor.id, id, dto);
+  }
+
+  @Delete('users/:id')
+  deleteUser(@CurrentUser() actor: AuthUser, @Param('id') id: string) {
+    return this.adminService.deleteUser(actor.id, id);
+  }
+
   @Post('users/:id/role')
   updateRole(
     @CurrentUser() actor: AuthUser,
@@ -38,12 +70,26 @@ export class AdminController {
     return this.adminService.updateRole(actor.id, id, dto);
   }
 
-  @Get('orgs')
-  listOrgs() {
-    return this.adminService.listOrgs();
+  // Mint a short-lived dashboard session as this user (impersonation / "log in as").
+  @Post('users/:id/impersonate')
+  impersonateUser(@CurrentUser() actor: AuthUser, @Param('id') id: string) {
+    return this.adminService.impersonateUser(actor, id);
   }
 
-  @Post('orgs/:id/quota')
+  @Get('organizations')
+  listOrganizations() {
+    return this.adminService.listOrganizations();
+  }
+
+  @Post('organizations')
+  createOrganization(
+    @CurrentUser() actor: AuthUser,
+    @Body() dto: CreateOrganizationDto,
+  ) {
+    return this.adminService.createOrganization(actor.id, dto);
+  }
+
+  @Post('organizations/:id/quota')
   updateQuota(
     @CurrentUser() actor: AuthUser,
     @Param('id') id: string,
@@ -57,9 +103,32 @@ export class AdminController {
     return this.adminService.listAllApps();
   }
 
+  // Platform-wide security patch + migrate: force a clean rebuild ("migrate") of
+  // every deployable site (optionally scoped to one app type). Superadmin-only —
+  // it's a destructive, cross-tenant maintenance action. Declared BEFORE the
+  // `apps/:id/*` routes so the static `bulk-migrate` segment isn't captured as
+  // an :id.
+  @Post('apps/bulk-migrate')
+  @Roles('superadmin')
+  bulkMigrateAllSites(@CurrentUser() actor: AuthUser, @Body() body: BulkMigrateDto) {
+    return this.adminService.bulkMigrateAllSites(
+      { id: actor.id, email: actor.email },
+      { type: body?.type },
+    );
+  }
+
   @Post('apps/:id/stop')
   adminStopApp(@CurrentUser() actor: AuthUser, @Param('id') id: string) {
     return this.adminService.adminStopApp(actor.id, id);
+  }
+
+  @Post('apps/:id/deploy')
+  adminDeployApp(
+    @CurrentUser() actor: AuthUser,
+    @Param('id') id: string,
+    @Body() body: { ref?: string },
+  ) {
+    return this.adminService.adminDeployApp(actor.id, id, body?.ref);
   }
 
   @Get('metrics')
@@ -67,8 +136,155 @@ export class AdminController {
     return this.adminService.getMetrics();
   }
 
+  // Deployment performance charts, default across all sites; optional
+  // ?organizationId= (customer) and ?appId= (site) filters and ?days= window.
+  @Get('performance')
+  getPerformance(
+    @Query('organizationId') organizationId?: string,
+    @Query('appId') appId?: string,
+    @Query('days') days?: string,
+    @Query('minutes') minutes?: string,
+  ) {
+    return this.adminService.getPerformance(
+      { organizationId: organizationId || undefined, appId: appId || undefined },
+      {
+        minutes: minutes ? Number(minutes) : undefined,
+        days: days ? Number(days) : undefined,
+      },
+    );
+  }
+
+  // Host capacity: CPU cores, memory, disk, and active users.
+  @Get('system')
+  getSystem() {
+    return this.adminService.getSystem();
+  }
+
+  // Live resource usage, uptime and responsiveness per site and per customer.
+  @Get('resources')
+  getResources(@Query('organizationId') organizationId?: string, @Query('appId') appId?: string) {
+    return this.adminService.getResourceUsage({
+      organizationId: organizationId || undefined,
+      appId: appId || undefined,
+    });
+  }
+
   @Get('audit')
   getAuditLogs() {
     return this.adminService.getAuditLogs();
+  }
+
+  // ---- Errors (deployment failures across orgs) ----
+
+  @Get('errors')
+  listDeploymentErrors() {
+    return this.adminService.listDeploymentErrors();
+  }
+
+  @Get('deployments/:id/log')
+  deploymentLog(@Param('id') id: string) {
+    return this.adminService.getDeploymentLog(id);
+  }
+
+  // ---- AI ----
+
+  @Get('ai/status')
+  aiStatus() {
+    return this.adminService.aiStatus();
+  }
+
+  @Post('deployments/:id/analyze')
+  analyzeDeployment(@CurrentUser() actor: AuthUser, @Param('id') id: string) {
+    return this.adminService.analyzeDeployment(actor.id, id);
+  }
+
+  @Post('apps/:id/analyze')
+  analyzeApp(@CurrentUser() actor: AuthUser, @Param('id') id: string) {
+    return this.adminService.analyzeLatestForApp(actor.id, id);
+  }
+
+  // ---- Settings (agent / MCP connection) ----
+
+  @Get('settings')
+  getSettings() {
+    return this.adminService.getSettings();
+  }
+
+  @Post('settings')
+  updateSettings(@CurrentUser() actor: AuthUser, @Body() dto: UpdateSettingsDto) {
+    return this.adminService.updateSettings(actor.id, dto);
+  }
+
+  // ---- Infrastructure settings (MariaDB root/admin + Frappe base image) ----
+
+  @Get('infra-settings')
+  getInfraSettings() {
+    return this.adminService.getInfraSettings();
+  }
+
+  @Post('infra-settings')
+  updateInfraSettings(
+    @CurrentUser() actor: AuthUser,
+    @Body() dto: UpdateInfraSettingsDto,
+  ) {
+    return this.adminService.updateInfraSettings(actor.id, dto);
+  }
+
+  // ---- Root access to a Frappe app's container + database ----
+  // Curated bench actions + read-only SQL. Superadmin-only (data-sensitive).
+
+  @Post('apps/:id/frappe/bench')
+  @Roles('superadmin')
+  runBenchAction(
+    @CurrentUser() actor: AuthUser,
+    @Param('id') id: string,
+    @Body() dto: RunBenchActionDto,
+  ) {
+    return this.frappeAdmin.runBenchAction(actor.id, id, dto.action);
+  }
+
+  @Post('apps/:id/frappe/sql')
+  @Roles('superadmin')
+  runSql(
+    @CurrentUser() actor: AuthUser,
+    @Param('id') id: string,
+    @Body() dto: RunSqlDto,
+  ) {
+    return this.frappeAdmin.runSql(actor.id, id, dto.query);
+  }
+
+  @Post('apps/:id/frappe/site-app')
+  @Roles('superadmin')
+  siteAppAction(
+    @CurrentUser() actor: AuthUser,
+    @Param('id') id: string,
+    @Body() dto: SiteAppActionDto,
+  ) {
+    return this.frappeAdmin.siteAppAction(actor.id, id, dto.action, dto.appName);
+  }
+
+  // ---- Permanent agent tokens + MCP config ----
+
+  @Get('agent-tokens')
+  listAgentTokens() {
+    return this.adminService.listAgentTokens();
+  }
+
+  @Post('agent-tokens')
+  createAgentToken(@CurrentUser() actor: AuthUser, @Body() dto: CreateAgentTokenDto) {
+    return this.adminService.createAgentToken(actor, dto.name ?? 'mcp-agent');
+  }
+
+  @Delete('agent-tokens/:id')
+  revokeAgentToken(@CurrentUser() actor: AuthUser, @Param('id') id: string) {
+    return this.adminService.revokeAgentToken(actor.id, id);
+  }
+
+  // Returns a ready-to-use .mcp.json (mints a fresh agent token, embeds it).
+  @Post('mcp-config')
+  generateMcpConfig(@CurrentUser() actor: AuthUser) {
+    // Absolute path to the built MCP server entry point in this monorepo.
+    const mcpEntry = path.resolve(process.cwd(), '../../packages/mcp/dist/index.js');
+    return this.adminService.generateMcpConfig(actor, mcpEntry);
   }
 }

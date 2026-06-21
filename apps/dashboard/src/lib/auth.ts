@@ -7,9 +7,18 @@ interface AuthContextValue {
   user: User | null;
   token: string | null;
   loading: boolean;
+  // Set to the admin's email when the current session is an impersonation.
+  impersonatedBy: string | null;
   login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string, orgName: string) => Promise<void>;
+  register: (
+    username: string,
+    email: string,
+    password: string,
+    organizationSlug: string,
+  ) => Promise<void>;
   logout: () => void;
+  // Adopt an impersonation token (from /impersonate?token=...) and load the user.
+  adoptToken: (token: string) => Promise<void>;
 }
 
 export const AuthContext = createContext<AuthContextValue | null>(null);
@@ -17,6 +26,7 @@ export const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [token, setTokenState] = useState<string | null>(() => localStorage.getItem("zonal-token"));
+  const [impersonatedBy, setImpersonatedBy] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const navigate = useNavigate();
 
@@ -28,13 +38,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     authApi
       .me()
-      .then(({ user: fetchedUser }) => {
+      .then(({ user: fetchedUser, impersonatedBy: imp }) => {
         setUser(fetchedUser);
+        setImpersonatedBy(imp ?? null);
       })
       .catch(() => {
         clearToken();
         setTokenState(null);
         setUser(null);
+        setImpersonatedBy(null);
       })
       .finally(() => {
         setLoading(false);
@@ -46,19 +58,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setToken(res.token);
     setTokenState(res.token);
     setUser(res.user);
+    setImpersonatedBy(null);
   }, []);
 
-  const register = useCallback(async (email: string, password: string, orgName: string) => {
-    const res = await authApi.register({ email, password, orgName });
-    setToken(res.token);
-    setTokenState(res.token);
-    setUser(res.user);
+  // Adopt a token minted elsewhere (an admin impersonation session). Stores it,
+  // verifies it via /me, and captures who is impersonating.
+  const adoptToken = useCallback(async (incoming: string) => {
+    setToken(incoming);
+    setTokenState(incoming);
+    const { user: fetchedUser, impersonatedBy: imp } = await authApi.me();
+    setUser(fetchedUser);
+    setImpersonatedBy(imp ?? null);
   }, []);
+
+  const register = useCallback(
+    async (
+      username: string,
+      email: string,
+      password: string,
+      organizationSlug: string,
+    ) => {
+      const res = await authApi.register({ username, email, password, organizationSlug });
+      setToken(res.token);
+      setTokenState(res.token);
+      setUser(res.user);
+      setImpersonatedBy(null);
+    },
+    [],
+  );
 
   const logout = useCallback(() => {
     clearToken();
     setTokenState(null);
     setUser(null);
+    setImpersonatedBy(null);
     navigate("/login");
   }, [navigate]);
 
@@ -66,9 +99,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     user,
     token,
     loading,
+    impersonatedBy,
     login,
     register,
     logout,
+    adoptToken,
   };
 
   return React.createElement(AuthContext.Provider, { value }, children);

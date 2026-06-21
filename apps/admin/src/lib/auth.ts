@@ -13,7 +13,8 @@ interface AuthContextValue {
   user: User | null;
   token: string | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<User>;
+  changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
   logout: () => void;
 }
 
@@ -60,7 +61,21 @@ export function useAuthProvider(): AuthContextValue {
     setToken(t);
     setTokenState(t);
     setUser(u);
+    return u;
   }, []);
+
+  const changePassword = useCallback(
+    async (currentPassword: string, newPassword: string) => {
+      const { token: t, user: u } = await authApi.changePassword(
+        currentPassword,
+        newPassword,
+      );
+      setToken(t);
+      setTokenState(t);
+      setUser(u);
+    },
+    [],
+  );
 
   const logout = useCallback(() => {
     clearToken();
@@ -69,5 +84,5 @@ export function useAuthProvider(): AuthContextValue {
     navigate("/login");
   }, [navigate]);
 
-  return { user, token, loading, login, logout };
+  return { user, token, loading, login, changePassword, logout };
 }

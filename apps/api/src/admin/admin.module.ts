@@ -1,12 +1,23 @@
 import { Module } from '@nestjs/common';
 import { AdminController } from './admin.controller';
 import { AdminService } from './admin.service';
+import { AiService } from './ai.service';
+import { FrappeAdminService } from './frappe-admin.service';
 import { DeployModule } from '../deploy/deploy.module';
+import { AuthModule } from '../auth/auth.module';
 import { AuditService } from '../common/audit.service';
+import { NotificationsModule } from '../notifications/notifications.module';
+import { PlatformSettingsService } from '../common/platform-settings.service';
 
 @Module({
-  imports: [DeployModule],
+  imports: [DeployModule, AuthModule, NotificationsModule],
   controllers: [AdminController],
-  providers: [AdminService, AuditService],
+  providers: [
+    AdminService,
+    AiService,
+    AuditService,
+    FrappeAdminService,
+    PlatformSettingsService,
+  ],
 })
 export class AdminModule {}

@@ -1,5 +1,7 @@
 import { Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { RequestContextService } from './request-context';
 
 export interface AuditEntry {
   actorUserId?: string;
@@ -11,16 +13,26 @@ export interface AuditEntry {
 
 @Injectable()
 export class AuditService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly requestContext: RequestContextService,
+  ) {}
 
   async log(entry: AuditEntry): Promise<void> {
+    // Fall back to the ambient request context so callers don't have to thread
+    // the IP / actor through every layer; an explicit value still wins.
+    const ip = entry.ip ?? this.requestContext.ip ?? null;
+    const actorUserId =
+      entry.actorUserId ?? this.requestContext.userId ?? null;
+
     await this.prisma.auditLog.create({
       data: {
-        actorUserId: entry.actorUserId ?? null,
+        actorUserId,
         action: entry.action,
         target: entry.target,
-        metadata: entry.metadata ?? null,
-        ip: entry.ip ?? null,
+        // Prisma requires Prisma.JsonNull (not JS null) for a nullable Json column.
+        metadata: (entry.metadata ?? Prisma.JsonNull) as Prisma.InputJsonValue,
+        ip,
       },
     });
   }

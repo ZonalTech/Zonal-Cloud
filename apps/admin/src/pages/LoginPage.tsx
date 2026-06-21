@@ -15,8 +15,10 @@ export function LoginPage() {
     setError(null);
     setSubmitting(true);
     try {
-      await login(email, password);
-      navigate("/metrics", { replace: true });
+      const u = await login(email, password);
+      navigate(u.mustChangePassword ? "/change-password" : "/metrics", {
+        replace: true,
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
     } finally {
@@ -27,12 +29,9 @@ export function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-brand-50 dark:bg-brand-950 px-4">
       <div className="w-full max-w-sm bg-white dark:bg-brand-900 border border-brand-200 dark:border-brand-700 rounded-lg shadow-sm p-8">
-        <h1 className="text-xl font-semibold text-brand-800 dark:text-brand-100 mb-1">
+        <h1 className="text-xl font-semibold text-brand-800 dark:text-brand-100 mb-6">
           Zonal Cloud Admin
         </h1>
-        <p className="text-sm text-brand-500 dark:text-brand-400 mb-6">
-          Sign in with your admin account to continue.
-        </p>
 
         {error && (
           <div className="mb-4 px-4 py-3 rounded border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/30 text-sm text-red-700 dark:text-red-400">
@@ -46,17 +45,17 @@ export function LoginPage() {
               htmlFor="email"
               className="block text-sm font-medium text-brand-700 dark:text-brand-300 mb-1"
             >
-              Email
+              Email or username
             </label>
             <input
               id="email"
-              type="email"
-              autoComplete="email"
+              type="text"
+              autoComplete="username"
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="w-full px-3 py-2 rounded border border-brand-300 dark:border-brand-600 bg-white dark:bg-brand-800 text-brand-900 dark:text-brand-100 placeholder-brand-400 dark:placeholder-brand-500 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 dark:focus:ring-brand-400 transition-colors"
-              placeholder="admin@example.com"
+              placeholder="administrator"
             />
           </div>
 

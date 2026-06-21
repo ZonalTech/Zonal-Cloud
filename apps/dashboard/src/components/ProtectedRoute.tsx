@@ -1,9 +1,9 @@
-import React from "react";
-import { Navigate } from "react-router-dom";
+import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "../lib/auth";
 
 export function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
+  const location = useLocation();
 
   if (loading) {
     return (
@@ -17,7 +17,11 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
   }
 
   if (!user) {
-    return <Navigate to="/login" replace />;
+    // Preserve where the user was headed (e.g. the app deep-linked from the
+    // "site not available" page) so login can return them there.
+    const dest = location.pathname + location.search;
+    const to = dest && dest !== "/" ? `/login?redirect=${encodeURIComponent(dest)}` : "/login";
+    return <Navigate to={to} replace />;
   }
 
   return <>{children}</>;

@@ -4,6 +4,10 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Zonal Cloud -- Admin</title>
+    <!-- Runtime config injected by the container entrypoint (see Dockerfile).
+         Provides window.__ZONAL_CONFIG__.apiUrl so one prebuilt image serves
+         any domain. A no-op placeholder during `npm run dev`. -->
+    <script src="/config.js"></script>
   </head>
   <body>
     <div id="root"></div>

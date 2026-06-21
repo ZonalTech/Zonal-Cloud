@@ -1,10 +1,21 @@
-import React, { FormEvent, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { FormEvent, useEffect, useState } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../lib/auth";
 
 export function LoginPage() {
-  const { login } = useAuth();
+  const { user, login } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  // After login, return to where the user was headed (set by ProtectedRoute /
+  // the "site not available" page). Only allow same-app relative paths.
+  const redirectParam = searchParams.get("redirect");
+  const redirectTo = redirectParam && redirectParam.startsWith("/") ? redirectParam : "/apps";
+
+  // Already signed in (e.g. arriving from the "site not available" page with a
+  // live session)? Skip the form and go straight to the destination.
+  useEffect(() => {
+    if (user) navigate(redirectTo, { replace: true });
+  }, [user, redirectTo, navigate]);
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -17,7 +28,7 @@ export function LoginPage() {
     setSubmitting(true);
     try {
       await login(email, password);
-      navigate("/apps");
+      navigate(redirectTo);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
     } finally {
@@ -30,7 +41,6 @@ export function LoginPage() {
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
           <h1 className="text-2xl font-bold text-brand-900 dark:text-brand-50">Zonal Cloud</h1>
-          <p className="mt-1 text-sm text-brand-500 dark:text-brand-400">Sign in to your account</p>
         </div>
 
         <div className="bg-white dark:bg-brand-900 rounded-lg border border-brand-200 dark:border-brand-700 p-6 shadow-sm">
@@ -83,7 +93,13 @@ export function LoginPage() {
           </form>
         </div>
 
-        <p className="mt-4 text-center text-sm text-brand-500 dark:text-brand-400">
+        <p className="mt-4 text-center text-sm">
+          <Link to="/forgot-password" className="text-brand-700 dark:text-brand-300 font-medium hover:underline">
+            Forgot password?
+          </Link>
+        </p>
+
+        <p className="mt-2 text-center text-sm text-brand-500 dark:text-brand-400">
           No account?{" "}
           <Link to="/register" className="text-brand-700 dark:text-brand-300 font-medium hover:underline">
             Register

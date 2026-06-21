@@ -1,0 +1,82 @@
+# Build and publish Zonal Cloud platform images to GHCR.
+#
+# Produces the three images the server pulls (zone install / upgrade):
+#   ghcr.io/<owner>/zonal-cloud/api
+#   ghcr.io/<owner>/zonal-cloud/dashboard
+#   ghcr.io/<owner>/zonal-cloud/admin
+#
+# Triggers:
+#   - push to main      -> tags :latest (+ :sha-<short>)
+#   - push of a v* tag  -> tags :<version> and :latest
+#   - manual dispatch    -> tags whatever you pass as `tag`
+#
+# The frontend images are GENERIC (API URL is injected at container runtime via
+# ZONAL_API_URL), so a single build serves every domain — no per-deploy rebuild.
+
+name: release
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Image tag to publish"
+        required: true
+        default: "latest"
+
+env:
+  REGISTRY: ghcr.io
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [api, dashboard, admin]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set lowercase image name
+        id: img
+        run: echo "name=${REGISTRY}/${GITHUB_REPOSITORY,,}/${{ matrix.app }}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Derive tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.img.outputs.name }}
+          # Manage :latest explicitly below so it moves on BOTH default-branch
+          # pushes AND v* tag releases (the built-in flavor would only do one).
+          flavor: latest=false
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=sha,prefix=sha-,enable={{is_default_branch}}
+            type=semver,pattern={{version}}
+            type=raw,value=${{ github.event.inputs.tag }},enable=${{ github.event_name == 'workflow_dispatch' }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: ./apps/${{ matrix.app }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

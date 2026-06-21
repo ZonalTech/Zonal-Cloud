@@ -1,0 +1,35 @@
+{
+  "name": "@zonal-cloud/zone",
+  "version": "0.1.0",
+  "description": "zone — operator CLI to install, run, and maintain Zonal Cloud on a Linux server",
+  "license": "MIT",
+  "bin": {
+    "zone": "dist/index.js"
+  },
+  "main": "dist/index.js",
+  "files": [
+    "dist",
+    "templates"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "ts-node src/index.ts",
+    "start": "node dist/index.js",
+    "prepublishOnly": "npm run build",
+    "lint": "eslint \"src/**/*.ts\""
+  },
+  "dependencies": {
+    "commander": "^12.1.0",
+    "picocolors": "^1.1.1",
+    "prompts": "^2.4.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/prompts": "^2.4.9",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

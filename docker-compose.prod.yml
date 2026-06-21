@@ -1,0 +1,87 @@
+# docker-compose.prod.yml — Zonal Cloud full-stack server overlay.
+#
+# Used together with docker-compose.yml by zonalctl:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# This overlay adds the application tier (api, dashboard, admin) as built
+# containers, on top of the infrastructure (postgres, redis, traefik) defined
+# in the base file. It is what turns a checkout into a running platform on a
+# server, as opposed to the npm-based local dev workflow.
+#
+# Host rules:
+#   - With DOMAIN set, services are routed at api/dashboard/admin.<DOMAIN>.
+#   - Without DOMAIN, they fall back to the *.localhost names.
+# zonalctl computes API_HOST / DASHBOARD_HOST / ADMIN_HOST and the
+# build-time VITE_API_URL into .env so these labels resolve.
+
+services:
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    image: zonal-cloud/api:latest
+    container_name: zonal_api
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      PORT: ${PORT:-4000}
+      JWT_SECRET: ${JWT_SECRET}
+      CORS_ORIGINS: ${CORS_ORIGINS}
+    volumes:
+      # The API uses dockerode to deploy app containers, so it needs the socket.
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - zonal_net
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.zonal-api.rule=Host(`${API_HOST:-api.localhost}`)"
+      - "traefik.http.routers.zonal-api.entrypoints=web"
+      - "traefik.http.services.zonal-api.loadbalancer.server.port=4000"
+
+  dashboard:
+    build:
+      context: ./apps/dashboard
+      dockerfile: Dockerfile
+    image: zonal-cloud/dashboard:latest
+    container_name: zonal_dashboard
+    restart: unless-stopped
+    environment:
+      # The SPA reads the API URL at runtime from config.js (written by the
+      # image entrypoint), so this is a runtime env, NOT a build arg.
+      ZONAL_API_URL: ${VITE_API_URL:-http://localhost:4000}
+    depends_on:
+      - api
+    networks:
+      - zonal_net
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.zonal-dashboard.rule=Host(`${DASHBOARD_HOST:-dashboard.localhost}`)"
+      - "traefik.http.routers.zonal-dashboard.entrypoints=web"
+      - "traefik.http.services.zonal-dashboard.loadbalancer.server.port=80"
+
+  admin:
+    build:
+      context: ./apps/admin
+      dockerfile: Dockerfile
+    image: zonal-cloud/admin:latest
+    container_name: zonal_admin
+    restart: unless-stopped
+    environment:
+      ZONAL_API_URL: ${VITE_API_URL:-http://localhost:4000}
+      ZONAL_DASHBOARD_URL: ${DASHBOARD_URL:-http://localhost:5173}
+    depends_on:
+      - api
+    networks:
+      - zonal_net
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.zonal-admin.rule=Host(`${ADMIN_HOST:-admin.localhost}`)"
+      - "traefik.http.routers.zonal-admin.entrypoints=web"
+      - "traefik.http.services.zonal-admin.loadbalancer.server.port=80"

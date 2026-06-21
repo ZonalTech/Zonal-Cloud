@@ -39,7 +39,7 @@ export class DeployTokenGuard implements CanActivate {
       const payload = this.jwtService.verify(token, { secret });
       const user = await this.prisma.user.findUnique({
         where: { id: payload.sub },
-        select: { id: true, email: true, role: true, status: true, orgId: true },
+        select: { id: true, email: true, role: true, status: true, organizationId: true },
       });
       if (user && user.status !== 'suspended') {
         request.user = user;
@@ -63,7 +63,7 @@ export class DeployTokenGuard implements CanActivate {
           data: { lastUsedAt: new Date() },
         });
         // Set a synthetic user context for the deploy
-        request.user = { id: null, role: 'deploy-token', orgId: null };
+        request.user = { id: null, role: 'deploy-token', organizationId: null };
         request.deployTokenApp = appId;
         return true;
       }

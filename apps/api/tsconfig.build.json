@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "./src",
+    // Disable incremental builds for production output. The shared
+    // tsconfig.json sets incremental:true (good for dev/watch), but here it
+    // caused `nest build` to skip emit when a stale .tsbuildinfo existed,
+    // leaving dist without main.js.
+    "incremental": false
+  },
+  "exclude": ["node_modules", "dist", "test", "scripts", "**/*spec.ts"]
+}

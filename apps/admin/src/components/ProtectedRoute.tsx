@@ -3,6 +3,8 @@ import { useAuth } from "../lib/auth";
 
 export function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
+  // ...role/loading checks below; the forced-password-change redirect is added
+  // after we know the user is present and permitted.
 
   if (loading) {
     return (
@@ -36,6 +38,12 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
         </div>
       </div>
     );
+  }
+
+  // Admin with a pending forced password change: keep them out of the panel
+  // until they set their own password.
+  if (user.mustChangePassword) {
+    return <Navigate to="/change-password" replace />;
   }
 
   return <>{children}</>;

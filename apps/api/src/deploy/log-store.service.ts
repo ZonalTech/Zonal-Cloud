@@ -11,7 +11,12 @@ export class LogStoreService {
 
   async append(deploymentId: string, line: string): Promise<void> {
     const key = `${LOG_KEY_PREFIX}${deploymentId}`;
-    await this.redis.rpush(key, line);
+    // Stamp every line with the wall-clock time it was emitted, as a parseable
+    // prefix `@ts:<epochMillis>\x1f<line>`. The dashboard splits on \x1f to show
+    // a timestamp gutter; older/plain readers can ignore it. \x1f (unit
+    // separator) is used so it never collides with real log content.
+    const stamped = `@ts:${Date.now()}\x1f${line}`;
+    await this.redis.rpush(key, stamped);
     await this.redis.expire(key, LOG_TTL_SECONDS);
   }
 
@@ -20,33 +25,10 @@ export class LogStoreService {
     return this.redis.lrange(key, 0, -1);
   }
 
-  async tailStream(deploymentId: string): Promise<AsyncIterable<string>> {
+  // Return log lines from `start` (0-based) to the end. Used by the SSE streamer
+  // to fetch only lines it hasn't sent yet (cursor-based tailing).
+  async getFrom(deploymentId: string, start: number): Promise<string[]> {
     const key = `${LOG_KEY_PREFIX}${deploymentId}`;
-    const redis = this.redis;
-    let index = 0;
-
-    return {
-      [Symbol.asyncIterator]() {
-        return {
-          async next() {
-            // Poll for new log lines with a short delay
-            for (let attempts = 0; attempts < 120; attempts++) {
-              const lines = await redis.lrange(key, index, -1);
-              if (lines.length > 0) {
-                index += lines.length;
-                return { value: lines.join('\n'), done: false };
-              }
-              // Check if deployment is done — if key expired, stop
-              const exists = await redis.exists(key);
-              if (!exists && attempts > 5) {
-                return { value: '', done: true };
-              }
-              await new Promise((r) => setTimeout(r, 500));
-            }
-            return { value: '', done: true };
-          },
-        };
-      },
-    };
+    return this.redis.lrange(key, start, -1);
   }
 }

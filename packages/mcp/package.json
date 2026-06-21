@@ -1,0 +1,24 @@
+{
+  "name": "@zonal-cloud/mcp",
+  "version": "0.1.0",
+  "description": "Zonal Cloud MCP server — lets an AI agent inspect and act on deployed apps",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "zonal-mcp": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3"
+  }
+}

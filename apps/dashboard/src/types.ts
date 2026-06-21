@@ -2,22 +2,23 @@ export type AppStatus = "idle" | "building" | "live" | "failed" | "stopped";
 export type DeploymentStatus = "queued" | "building" | "live" | "failed";
 export type UserRole = "user" | "admin" | "superadmin";
 export type UserStatus = "active" | "suspended";
-export type OrgStatus = "active" | "suspended";
+export type OrganizationStatus = "active" | "suspended";
 export type AppSource = "git" | "upload";
-export type AppType = "static" | "node" | "fullstack" | "nodered";
+export type AppType = "static" | "node" | "fullstack" | "nodered" | "frappe";
 
-export interface Org {
+export interface Organization {
   id: string;
   name: string;
   slug: string;
   plan: "free" | "pro";
-  status: OrgStatus;
+  status: OrganizationStatus;
   createdAt: string;
 }
 
 export interface User {
   id: string;
-  orgId: string;
+  organizationId: string;
+  username: string;
   email: string;
   role: UserRole;
   status: UserStatus;
@@ -26,7 +27,7 @@ export interface User {
 
 export interface Quota {
   id: string;
-  orgId: string;
+  organizationId: string;
   maxApps: number;
   cpu: number;
   memory: number;
@@ -47,6 +48,19 @@ export interface App {
   buildCmd?: string;
   outputDir?: string;
   status: AppStatus;
+  // Public URL the deployed app is reachable at (built by the API from the
+  // subdomain + BASE_DOMAIN + APP_HTTP_PORT).
+  url?: string;
+  createdAt?: string;
+  // Email (or username) of the app's creator. Only populated by the detail
+  // endpoint (getApp), not the list.
+  createdBy?: string | null;
+  // For Frappe apps: the framework version the bench is built on
+  // (frappe/frappe branch, e.g. "version-15").
+  frappeVersion?: string | null;
+  // For Node-RED apps: the host port this instance is published on (container
+  // :1880 mapped to this port on the Docker host).
+  noderedPort?: number | null;
 }
 
 export interface Deployment {
@@ -78,8 +92,20 @@ export interface AuditLog {
 
 export interface Metrics {
   users: number;
-  orgs: number;
+  organizations: number;
   apps: number;
   deployments: number;
   queueDepth: number;
+}
+
+export type NotificationType = "account_impersonated" | "deployment_failed";
+
+export interface Notification {
+  id: string;
+  type: NotificationType;
+  message: string;
+  metadata?: Record<string, unknown>;
+  // null/absent = unread; an ISO timestamp once the user has cleared it.
+  readAt?: string | null;
+  createdAt: string;
 }

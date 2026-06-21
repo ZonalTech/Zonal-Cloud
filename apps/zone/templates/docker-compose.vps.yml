@@ -1,0 +1,48 @@
+# Zonal Cloud — VPS / production TLS overlay (registry deployment).
+#
+# Shipped inside the zone package; stacked on the bundled
+# docker-compose.yml when DOMAIN is set:
+#   docker compose -f docker-compose.yml -f docker-compose.vps.yml up -d
+#
+# Adds HTTPS on :443 via Let's Encrypt and binds each app router to the
+# `websecure` entrypoint. Certs persist in the `letsencrypt` volume.
+
+volumes:
+  letsencrypt:
+
+services:
+  traefik:
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./traefik.prod.yml:/etc/traefik/traefik.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - letsencrypt:/letsencrypt
+
+  api:
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.zonal-api.rule=Host(`${API_HOST}`)"
+      - "traefik.http.routers.zonal-api.entrypoints=websecure"
+      - "traefik.http.routers.zonal-api.tls=true"
+      - "traefik.http.routers.zonal-api.tls.certresolver=letsencrypt"
+      - "traefik.http.services.zonal-api.loadbalancer.server.port=4000"
+
+  dashboard:
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.zonal-dashboard.rule=Host(`${DASHBOARD_HOST}`)"
+      - "traefik.http.routers.zonal-dashboard.entrypoints=websecure"
+      - "traefik.http.routers.zonal-dashboard.tls=true"
+      - "traefik.http.routers.zonal-dashboard.tls.certresolver=letsencrypt"
+      - "traefik.http.services.zonal-dashboard.loadbalancer.server.port=80"
+
+  admin:
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.zonal-admin.rule=Host(`${ADMIN_HOST}`)"
+      - "traefik.http.routers.zonal-admin.entrypoints=websecure"
+      - "traefik.http.routers.zonal-admin.tls=true"
+      - "traefik.http.routers.zonal-admin.tls.certresolver=letsencrypt"
+      - "traefik.http.services.zonal-admin.loadbalancer.server.port=80"
