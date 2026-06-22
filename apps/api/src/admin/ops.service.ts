@@ -27,7 +27,8 @@ export type ZoneCommandKey =
   | 'restart'
   | 'migratedb'
   | 'backupdb'
-  | 'deploymail';
+  | 'deploymail'
+  | 'restartmail';
 
 interface ZoneCommandSpec {
   /** argv passed to the `zone` binary (no shell, no interpolation). */
@@ -104,6 +105,18 @@ export class OpsService {
         'including the Stalwart mail server — without pulling new images. ' +
         'Use this to deploy mail after it was added to the stack.',
     },
+    restartmail: {
+      // Special-cased in runCommand — restarts the stalwart container directly
+      // (no zone CLI argv). Useful after changing the recovery admin or if the
+      // mail server is stuck.
+      argv: [],
+      label: 'restartmail',
+      mutating: true,
+      description:
+        'Restarts just the Stalwart mail server container. Brief mail downtime; ' +
+        'does not touch any other service. Use after changing mail settings or ' +
+        'if the mail server is unresponsive.',
+    },
   };
 
   constructor(private readonly audit: AuditService) {}
@@ -141,6 +154,11 @@ export class OpsService {
         code: 'UNKNOWN_COMMAND',
         message: `Unknown zone command: ${key}`,
       });
+    }
+
+    // Special case: restart the mail container directly (no zone CLI argv).
+    if (key === 'restartmail') {
+      return this.restartContainer(actorUserId, 'stalwart', key);
     }
 
     // The helper (docker:cli, Alpine) adds Node, installs the CLI globally, then
@@ -286,6 +304,34 @@ export class OpsService {
     }
 
     return { username: 'admin', password: null, source: 'unknown' };
+  }
+
+  /** Restart a single platform container directly via the Docker socket. */
+  private async restartContainer(
+    actorUserId: string,
+    name: string,
+    key: ZoneCommandKey,
+  ): Promise<{ command: string; output: string; exitCode: number }> {
+    let exitCode = 0;
+    let output = '';
+    try {
+      const c = this.docker.getContainer(name);
+      await c.inspect(); // 404s if missing
+      await c.restart();
+      output = `Container ${name} restarted.`;
+    } catch {
+      exitCode = 1;
+      output = `Could not restart "${name}" — is the mail server deployed? (run deploymail)`;
+    }
+
+    await this.audit.log({
+      actorUserId,
+      action: `platform.ops.${key}`,
+      target: name,
+      metadata: { exitCode },
+    });
+
+    return { command: `restart ${name}`, output, exitCode };
   }
 
   /** Pull the helper image if it isn't present locally. */
