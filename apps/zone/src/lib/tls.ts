@@ -6,7 +6,8 @@
  * bundled traefik.prod.yml.template. Called by `install --domain ...` and by
  * `zone tls`.
  */
-import { writeFileSync } from 'node:fs';
+import { writeFileSync, mkdirSync } from 'node:fs';
+import { dirname } from 'node:path';
 import { Paths } from './paths';
 import { readTemplate } from './templates';
 
@@ -19,6 +20,7 @@ const PLACEHOLDER = '__ACME_EMAIL__';
 export function renderTraefikProd(paths: Paths, acmeEmail: string): string {
   const tpl = readTemplate(paths, 'traefik.prod.yml.template');
   const rendered = tpl.split(PLACEHOLDER).join(acmeEmail);
+  mkdirSync(dirname(paths.traefikProd), { recursive: true });
   writeFileSync(paths.traefikProd, rendered);
   return paths.traefikProd;
 }

@@ -8,7 +8,8 @@ import { Command } from 'commander';
 import { Ctx, composeFiles, loadContext } from '../lib/context';
 import { runStream } from '../lib/exec';
 import { buildEnv, readEnvFile, writeEnvFile } from '../lib/env';
-import { down, runMigrations, up } from '../lib/stack';
+import { down, restart, runMigrations, up } from '../lib/stack';
+import { bootstrapDns, freePort53 } from '../lib/dnsbootstrap';
 import { materializeTemplates } from '../lib/templates';
 import { renderTraefikProd, looksLikeEmail } from '../lib/tls';
 import { ui, die } from '../lib/ui';
@@ -57,12 +58,27 @@ export function registerMaintenance(program: Command): void {
       ui.heading('Refreshing deployment files');
       const mat = materializeTemplates(ctx.paths);
       ui.ok(`Updated: ${mat.copied.join(', ')}`);
-      if (opts.tag) {
-        const env = readEnvFile(ctx.paths.envFile);
-        env.ZONAL_TAG = opts.tag;
-        writeEnvFile(ctx.paths.envFile, env);
-        ui.ok(`Image tag set to ${opts.tag}`);
+
+      // Backfill any new env keys (e.g. PDNS_*, MAIL_*) introduced by a newer
+      // CLI, preserving existing secrets/values. Also re-render TLS so the
+      // traefik prod config lands at its (possibly relocated) path.
+      ui.heading('Refreshing configuration');
+      const existing = readEnvFile(ctx.paths.envFile);
+      if (opts.tag) existing.ZONAL_TAG = opts.tag;
+      const env = buildEnv({ existing });
+      env.ZONAL_REGISTRY = existing.ZONAL_REGISTRY || env.ZONAL_REGISTRY;
+      env.ZONAL_TAG = existing.ZONAL_TAG || env.ZONAL_TAG;
+      writeEnvFile(ctx.paths.envFile, env);
+      ui.ok('Environment refreshed (existing secrets preserved; new keys added).');
+      if (env.DOMAIN && env.ACME_EMAIL && looksLikeEmail(env.ACME_EMAIL)) {
+        renderTraefikProd(ctx.paths, env.ACME_EMAIL);
+        ui.ok('Re-rendered Traefik production config.');
       }
+      if (opts.tag) ui.ok(`Image tag set to ${opts.tag}`);
+
+      // Free host port 53 so the managed-DNS container can bind it.
+      ui.heading('Managed DNS');
+      freePort53();
 
       ui.heading('Pulling images and restarting');
       const upCode = await up(ctx, true); // pull, then up
@@ -71,6 +87,11 @@ export function registerMaintenance(program: Command): void {
       ui.heading('Migrations');
       const mig = await runMigrations(ctx);
       if (mig !== 0) die('Migrations failed after upgrade. The stack is up but the schema may be stale.');
+
+      // Ensure the managed-DNS backend (pdns db + schema) is bootstrapped, then
+      // restart pdns so it picks up the schema/env. Idempotent.
+      bootstrapDns(ctx);
+      await restart(ctx, 'pdns');
       ui.ok('Upgrade complete.');
     });
 

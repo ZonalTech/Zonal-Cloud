@@ -54,3 +54,12 @@ services:
       - "traefik.http.routers.zonal-admin.tls=true"
       - "traefik.http.routers.zonal-admin.tls.certresolver=letsencrypt"
       - "traefik.http.services.zonal-admin.loadbalancer.server.port=80"
+
+  stalwart:
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.zonal-mail.rule=Host(`${MAIL_HOST}`)"
+      - "traefik.http.routers.zonal-mail.entrypoints=websecure"
+      - "traefik.http.routers.zonal-mail.tls=true"
+      - "traefik.http.routers.zonal-mail.tls.certresolver=letsencrypt"
+      - "traefik.http.services.zonal-mail.loadbalancer.server.port=8080"

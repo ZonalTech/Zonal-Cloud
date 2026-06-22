@@ -29,6 +29,9 @@ services:
       PORT: ${PORT:-4000}
       JWT_SECRET: ${JWT_SECRET}
       CORS_ORIGINS: ${CORS_ORIGINS}
+      # Host path of the platform data dir (compose files + .env), so the
+      # admin "Zone CLI" ops can mount it into the one-shot upgrade helper.
+      ZONAL_DATA_DIR: ${ZONAL_DATA_DIR:-/opt/zonal-cloud}
     volumes:
       # The API uses dockerode to deploy app containers, so it needs the socket.
       - /var/run/docker.sock:/var/run/docker.sock
@@ -76,6 +79,7 @@ services:
     environment:
       ZONAL_API_URL: ${VITE_API_URL:-http://localhost:4000}
       ZONAL_DASHBOARD_URL: ${DASHBOARD_URL:-http://localhost:5173}
+      ZONAL_MAIL_URL: ${MAIL_URL:-}
     depends_on:
       - api
     networks:

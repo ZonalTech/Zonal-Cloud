@@ -1,13 +1,20 @@
-# Zonal Cloud — VPS / production TLS overlay (registry deployment).
+# docker-compose.vps.yml — Zonal Cloud VPS / production TLS overlay.
 #
-# Shipped inside the zone package; stacked on the bundled
-# docker-compose.yml when DOMAIN is set:
-#   docker compose -f docker-compose.yml -f docker-compose.vps.yml up -d
+# Stacked on top of docker-compose.yml + docker-compose.prod.yml by zonalctl
+# whenever DOMAIN is set (a real cloud VPS deployment):
+#   docker compose -f docker-compose.yml \
+#                  -f docker-compose.prod.yml \
+#                  -f docker-compose.vps.yml up -d
 #
-# Adds HTTPS on :443 via Let's Encrypt and binds each app router to the
-# `websecure` entrypoint. Certs persist in the `letsencrypt` volume.
+# What it changes vs. the local HTTP setup:
+#   - Traefik serves HTTPS on :443 using the rendered traefik.prod.yml
+#     (Let's Encrypt). HTTP/:80 is kept only for the ACME/redirect path.
+#   - Certificates are persisted in the `letsencrypt` named volume.
+#   - api / dashboard / admin routers are bound to the `websecure` entrypoint
+#     with certResolver=letsencrypt, so each gets an auto-renewed cert.
 
 volumes:
+  # Persists Let's Encrypt's acme.json across restarts (survives `down`).
   letsencrypt:
 
 services:
@@ -16,7 +23,8 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ./traefik.prod.yml:/etc/traefik/traefik.yml:ro
+      # Override the static config with the production (TLS) one.
+      - ./services/proxy/traefik.prod.yml:/etc/traefik/traefik.yml:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - letsencrypt:/letsencrypt
 
@@ -46,3 +54,12 @@ services:
       - "traefik.http.routers.zonal-admin.tls=true"
       - "traefik.http.routers.zonal-admin.tls.certresolver=letsencrypt"
       - "traefik.http.services.zonal-admin.loadbalancer.server.port=80"
+
+  stalwart:
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.zonal-mail.rule=Host(`${MAIL_HOST}`)"
+      - "traefik.http.routers.zonal-mail.entrypoints=websecure"
+      - "traefik.http.routers.zonal-mail.tls=true"
+      - "traefik.http.routers.zonal-mail.tls.certresolver=letsencrypt"
+      - "traefik.http.services.zonal-mail.loadbalancer.server.port=8080"

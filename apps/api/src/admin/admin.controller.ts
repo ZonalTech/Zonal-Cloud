@@ -13,6 +13,7 @@ import { CreateAgentTokenDto } from './dto/create-agent-token.dto';
 import { UpdateInfraSettingsDto } from './dto/update-infra-settings.dto';
 import { FrappeAdminService } from './frappe-admin.service';
 import { DnsService } from '../dns/dns.service';
+import { OpsService, ZoneCommandKey } from './ops.service';
 import { RunBenchActionDto, RunSqlDto, SiteAppActionDto } from './dto/root-access.dto';
 import { BulkMigrateDto } from './dto/bulk-migrate.dto';
 import * as path from 'path';
@@ -32,7 +33,25 @@ export class AdminController {
     private readonly adminService: AdminService,
     private readonly frappeAdmin: FrappeAdminService,
     private readonly dns: DnsService,
+    private readonly ops: OpsService,
   ) {}
+
+  // ---- Platform ops (zone CLI) — superadmin only -------------------------
+
+  @Get('ops/commands')
+  @Roles('superadmin')
+  listOpsCommands() {
+    return { commands: this.ops.listCommands() };
+  }
+
+  @Post('ops/run/:key')
+  @Roles('superadmin')
+  runOpsCommand(
+    @CurrentUser() actor: AuthUser,
+    @Param('key') key: ZoneCommandKey,
+  ) {
+    return this.ops.runCommand(actor.id, key);
+  }
 
   // ---- DNS (cross-tenant) ------------------------------------------------
 

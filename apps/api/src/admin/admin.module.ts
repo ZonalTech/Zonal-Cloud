@@ -3,6 +3,7 @@ import { AdminController } from './admin.controller';
 import { AdminService } from './admin.service';
 import { AiService } from './ai.service';
 import { FrappeAdminService } from './frappe-admin.service';
+import { OpsService } from './ops.service';
 import { DeployModule } from '../deploy/deploy.module';
 import { AuthModule } from '../auth/auth.module';
 import { AuditService } from '../common/audit.service';
@@ -18,6 +19,7 @@ import { DnsModule } from '../dns/dns.module';
     AiService,
     AuditService,
     FrappeAdminService,
+    OpsService,
     PlatformSettingsService,
   ],
 })

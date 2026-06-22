@@ -12,9 +12,10 @@ set -eu
 CONFIG_PATH="/usr/share/nginx/html/config.js"
 API_URL="${ZONAL_API_URL:-}"
 DASHBOARD_URL="${ZONAL_DASHBOARD_URL:-}"
+MAIL_URL="${ZONAL_MAIL_URL:-}"
 
 cat > "$CONFIG_PATH" <<EOF
-window.__ZONAL_CONFIG__ = { apiUrl: "${API_URL}", dashboardUrl: "${DASHBOARD_URL}" };
+window.__ZONAL_CONFIG__ = { apiUrl: "${API_URL}", dashboardUrl: "${DASHBOARD_URL}", mailUrl: "${MAIL_URL}" };
 EOF
 
-echo "zonal: wrote ${CONFIG_PATH} (apiUrl=${API_URL:-<unset>}, dashboardUrl=${DASHBOARD_URL:-<unset>})"
+echo "zonal: wrote ${CONFIG_PATH} (apiUrl=${API_URL:-<unset>}, dashboardUrl=${DASHBOARD_URL:-<unset>}, mailUrl=${MAIL_URL:-<unset>})"

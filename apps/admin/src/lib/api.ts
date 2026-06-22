@@ -27,7 +27,7 @@ import type {
 //   3. localhost fallback for `npm run dev`.
 declare global {
   interface Window {
-    __ZONAL_CONFIG__?: { apiUrl?: string; dashboardUrl?: string };
+    __ZONAL_CONFIG__?: { apiUrl?: string; dashboardUrl?: string; mailUrl?: string };
   }
 }
 
@@ -44,6 +44,16 @@ export function getDashboardUrl(): string {
     (typeof window !== "undefined" && window.__ZONAL_CONFIG__?.dashboardUrl) ||
     (import.meta.env.VITE_DASHBOARD_URL as string | undefined) ||
     "http://localhost:5173"
+  );
+}
+
+// Public URL of the managed-mail (Stalwart) admin/web UI, injected at runtime.
+// Empty string when mail isn't configured, so callers can hide the link.
+export function getMailUrl(): string {
+  return (
+    (typeof window !== "undefined" && window.__ZONAL_CONFIG__?.mailUrl) ||
+    (import.meta.env.VITE_MAIL_URL as string | undefined) ||
+    ""
   );
 }
 
@@ -327,6 +337,17 @@ export const adminApi = {
     return request(`/v1/admin/deployments/${deploymentId}/analyze`, { method: "POST" });
   },
 
+  // ---- Platform ops (zone CLI) ----
+  listOpsCommands(): Promise<{ commands: OpsCommand[] }> {
+    return request("/v1/admin/ops/commands");
+  },
+
+  runOpsCommand(key: string): Promise<OpsResult> {
+    return request(`/v1/admin/ops/run/${encodeURIComponent(key)}`, {
+      method: "POST",
+    });
+  },
+
   // ---- DNS (cross-tenant) ----
   listDnsZones(): Promise<AdminDnsZone[]> {
     return request("/v1/admin/dns/zones");
@@ -342,6 +363,19 @@ export const adminApi = {
     });
   },
 };
+
+// ---- Platform ops (zone CLI) types ----
+export interface OpsCommand {
+  key: string;
+  label: string;
+  mutating: boolean;
+}
+
+export interface OpsResult {
+  command: string;
+  output: string;
+  exitCode: number;
+}
 
 // ---- DNS types (admin / cross-tenant) ----
 export const DNS_RECORD_TYPES = [

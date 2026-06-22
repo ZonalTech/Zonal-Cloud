@@ -28,10 +28,12 @@ import { buildEnv, readEnvFile, writeEnvFile, EnvMap } from '../lib/env';
 import {
   createSuperadmin,
   pull,
+  restart,
   runMigrations,
   up,
   waitForApi,
 } from '../lib/stack';
+import { bootstrapDns, freePort53 } from '../lib/dnsbootstrap';
 import { materializeTemplates } from '../lib/templates';
 import { renderTraefikProd, looksLikeEmail } from '../lib/tls';
 import { runPreflight } from './preflight';
@@ -106,11 +108,19 @@ async function ensureDocker(opts: InstallOpts): Promise<void> {
 function ensureEnv(ctx: Ctx, opts: InstallOpts, acmeEmail?: string): EnvMap {
   const existing = readEnvFile(ctx.paths.envFile);
   const hadEnv = Object.keys(existing).length > 0;
-  const env = buildEnv({ domain: opts.domain, existing });
+  const env = buildEnv({
+    domain: opts.domain,
+    existing,
+    mailAdminEmail: acmeEmail || opts.adminEmail,
+  });
 
   // Registry image source (used by the bundled compose's image: tags).
   env.ZONAL_REGISTRY = opts.registry || existing.ZONAL_REGISTRY || DEFAULT_REGISTRY;
   env.ZONAL_TAG = opts.tag || existing.ZONAL_TAG || 'latest';
+
+  // Host data dir — the API mounts this into the one-shot helper that runs
+  // `zone upgrade` triggered from the admin UI.
+  env.ZONAL_DATA_DIR = ctx.paths.dataDir;
 
   const domainMode = !!env.DOMAIN;
   if (domainMode) {
@@ -256,7 +266,12 @@ export function registerInstall(program: Command): void {
         ui.info('A wildcard *.' + env.DOMAIN + ' record covers all three.');
       }
 
-      // 5. pull + up
+      // 5. Managed DNS prep — free host port 53 so pdns can bind it. Safe/no-op
+      // when systemd-resolved isn't holding it.
+      ui.heading('Managed DNS');
+      freePort53();
+
+      // 6. pull + up
       ui.heading('Pulling images and starting the stack');
       const pullCode = await pull(ctx);
       if (pullCode !== 0) {
@@ -266,11 +281,16 @@ export function registerInstall(program: Command): void {
       if (upCode !== 0) die('docker compose up failed. See output above.');
       ui.ok('Containers are up.');
 
-      // 5. migrations
+      // 7. migrations
       ui.heading('Database migrations');
       const migCode = await runMigrations(ctx);
       if (migCode !== 0) die('Prisma migrate deploy failed. See output above.');
       ui.ok('Migrations applied.');
+
+      // 8. DNS backend bootstrap (pdns db + schema), then (re)start pdns so it
+      // connects cleanly. Postgres is up by now; this is idempotent.
+      bootstrapDns(ctx);
+      await restart(ctx, 'pdns');
 
       // 6. superadmin
       ui.heading('Superadmin');
@@ -294,6 +314,12 @@ export function registerInstall(program: Command): void {
       ui.detail('Dashboard', `${scheme}://${env.DASHBOARD_HOST}`);
       ui.detail('Admin', `${scheme}://${env.ADMIN_HOST}`);
       ui.detail('API', `${scheme}://${env.API_HOST}/v1`);
+      ui.detail('Mail (Stalwart)', env.MAIL_URL);
+      ui.detail('Mail admin login', env.MAIL_ADMIN_USER);
+      ui.detail('Mail admin password', env.MAIL_ADMIN_PASSWORD);
+      ui.newline();
+      ui.info(`Managed DNS nameservers: ${env.DNS_NAMESERVERS}`);
+      ui.info('Customers delegate their domains to these; grant a DNS quota in Admin → Organizations.');
       if (env.DOMAIN) {
         ui.newline();
         ui.info('TLS: Let\'s Encrypt issues certificates on first request to each host.');

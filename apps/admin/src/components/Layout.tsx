@@ -18,6 +18,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: "Apps", to: "/apps" },
   { label: "DNS", to: "/dns" },
   { label: "Root Access", to: "/root-access", superadminOnly: true },
+  { label: "Zone CLI", to: "/zone-cli", superadminOnly: true },
   { label: "Errors", to: "/errors" },
   { label: "Audit", to: "/audit" },
 ];

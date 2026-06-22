@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTheme } from "../context/ThemeContext";
 import { useAuth } from "../lib/auth";
-import { getDashboardUrl } from "../lib/api";
+import { getDashboardUrl, getMailUrl } from "../lib/api";
 
 // Account control pinned to the bottom-left of the sidebar. The identity row is a
 // button that toggles a dropdown (opening upward) with settings, the theme
@@ -71,6 +71,19 @@ export function SidebarAccount() {
           >
             Dashboard
           </button>
+          {getMailUrl() && (
+            <button
+              role="menuitem"
+              onClick={() => {
+                setOpen(false);
+                // Stalwart mail admin is a separate service — open in a new tab.
+                window.open(getMailUrl(), "_blank", "noopener");
+              }}
+              className="w-full text-left px-3 py-2 text-sm font-medium text-brand-600 dark:text-brand-400 hover:bg-brand-100 dark:hover:bg-brand-800 hover:text-brand-800 dark:hover:text-brand-200 transition-colors"
+            >
+              Mail server
+            </button>
+          )}
           <button
             role="menuitem"
             onClick={() => {

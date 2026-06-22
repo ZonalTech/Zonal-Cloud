@@ -79,7 +79,9 @@ export function resolvePaths(): Paths {
     templatesDir: templatesDir(),
     composeBase: join(dataDir, 'docker-compose.yml'),
     composeVps: join(dataDir, 'docker-compose.vps.yml'),
-    traefikProd: join(dataDir, 'traefik.prod.yml'),
+    // Compose mounts ./services/proxy/traefik.prod.yml, so the rendered prod
+    // config must live there (not flat in the data dir).
+    traefikProd: join(dataDir, 'services', 'proxy', 'traefik.prod.yml'),
     envFile: join(dataDir, '.env'),
     backupsDir: join(dataDir, 'backups'),
   };

@@ -12,7 +12,8 @@
     "templates"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "sync:templates": "node scripts/sync-templates.js",
+    "build": "npm run sync:templates && tsc -p tsconfig.json",
     "dev": "ts-node src/index.ts",
     "start": "node dist/index.js",
     "prepublishOnly": "npm run build",
