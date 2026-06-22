@@ -1,6 +1,6 @@
 {
   "name": "@zonalcloud/zone",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "zone — operator CLI to install, run, and maintain Zonal Cloud on a Linux server",
   "license": "MIT",
   "bin": {

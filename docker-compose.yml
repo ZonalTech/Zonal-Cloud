@@ -281,7 +281,7 @@ services:
   # First-run admin credentials come from the .env (seeded by the zone CLI).
   # ----------------------------------------------------------------
   stalwart:
-    image: stalwartlabs/mail-server:latest
+    image: stalwartlabs/stalwart:latest
     container_name: stalwart
     restart: unless-stopped
     environment:

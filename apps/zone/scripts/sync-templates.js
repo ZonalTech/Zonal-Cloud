@@ -15,6 +15,7 @@ const templatesDir = resolve(__dirname, '..', 'templates');
 
 const FILES = [
   'docker-compose.yml',
+  'docker-compose.prod.yml',
   'docker-compose.vps.yml',
 ];
 

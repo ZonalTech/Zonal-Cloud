@@ -21,6 +21,8 @@ export interface Paths {
   /** Bundled templates shipped in the package. */
   templatesDir: string;
   composeBase: string;
+  /** Prebuilt-image production stack (defines api/dashboard/admin with image:). */
+  composeProd: string;
   composeVps: string;
   /** Rendered Traefik production config (written by tls.renderTraefikProd). */
   traefikProd: string;
@@ -78,6 +80,7 @@ export function resolvePaths(): Paths {
     dataDir,
     templatesDir: templatesDir(),
     composeBase: join(dataDir, 'docker-compose.yml'),
+    composeProd: join(dataDir, 'docker-compose.prod.yml'),
     composeVps: join(dataDir, 'docker-compose.vps.yml'),
     // Compose mounts ./services/proxy/traefik.prod.yml, so the rendered prod
     // config must live there (not flat in the data dir).

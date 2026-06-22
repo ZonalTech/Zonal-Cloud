@@ -25,6 +25,7 @@ import { Paths, ensureDataDir } from './paths';
 
 const TEMPLATE_FILES = [
   'docker-compose.yml',
+  'docker-compose.prod.yml',
   'docker-compose.vps.yml',
   'traefik.yml',
   'traefik.prod.yml.template',

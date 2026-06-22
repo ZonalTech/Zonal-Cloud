@@ -59,6 +59,12 @@ export function loadContext(
  */
 export function composeFiles(paths: Paths): string[] {
   const flags = ['-f', paths.composeBase];
+  // The prod overlay defines the prebuilt-image app services (api/dashboard/
+  // admin). Without it the base compose's commented-out stubs leave `api` with
+  // no image/build context — so include it whenever it's present.
+  if (existsSync(paths.composeProd)) {
+    flags.push('-f', paths.composeProd);
+  }
   if (existsSync(paths.composeVps) && isDomainMode(paths)) {
     flags.push('-f', paths.composeVps);
   }
