@@ -17,16 +17,16 @@
 #
 # What it does:
 #   1. Installs prerequisites: curl + Node.js 20 (via NodeSource) if missing.
-#   2. Installs the CLI globally:  npm i -g @zonal-cloud/zone
+#   2. Installs the CLI globally:  npm i -g @zonalcloud/zone
 #   3. Hands off to `zone install --install-docker`, forwarding your args.
 #
 # Configurable via environment:
-#   ZONAL_CLI_PKG     npm package/spec  (default: @zonal-cloud/zone)
+#   ZONAL_CLI_PKG     npm package/spec  (default: @zonalcloud/zone)
 #   ZONAL_NO_INSTALL  =1 to set up the CLI but skip `zone install`
 
 set -euo pipefail
 
-ZONAL_CLI_PKG="${ZONAL_CLI_PKG:-@zonal-cloud/zone}"
+ZONAL_CLI_PKG="${ZONAL_CLI_PKG:-@zonalcloud/zone}"
 
 log()  { printf '\n==> %s\n' "$*"; }
 info() { printf '    %s\n' "$*"; }

@@ -443,6 +443,83 @@ export const appsApi = {
   },
 };
 
+// Managed DNS API
+
+export const DNS_RECORD_TYPES = [
+  "A",
+  "AAAA",
+  "CNAME",
+  "MX",
+  "TXT",
+  "NS",
+  "SRV",
+  "CAA",
+] as const;
+export type DnsRecordType = (typeof DNS_RECORD_TYPES)[number];
+
+export interface DnsZone {
+  id: string;
+  organizationId: string;
+  name: string;
+  status: "active" | "suspended";
+  createdAt: string;
+  nameservers: string[];
+}
+
+export interface DnsRecord {
+  name: string; // "@" for apex
+  type: DnsRecordType;
+  ttl: number;
+  records: string[];
+  // True for platform-managed RRsets (apex NS) — shown read-only.
+  managed?: boolean;
+}
+
+export const dnsApi = {
+  listZones(): Promise<DnsZone[]> {
+    return request<DnsZone[]>("/v1/dns/zones");
+  },
+
+  createZone(name: string): Promise<DnsZone> {
+    return request<DnsZone>("/v1/dns/zones", {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    });
+  },
+
+  deleteZone(name: string): Promise<{ deleted: boolean }> {
+    return request(`/v1/dns/zones/${encodeURIComponent(name)}`, {
+      method: "DELETE",
+    });
+  },
+
+  listRecords(zone: string): Promise<DnsRecord[]> {
+    return request<DnsRecord[]>(
+      `/v1/dns/zones/${encodeURIComponent(zone)}/records`,
+    );
+  },
+
+  upsertRecord(
+    zone: string,
+    payload: { name: string; type: DnsRecordType; ttl?: number; records: string[] },
+  ): Promise<DnsRecord> {
+    return request(`/v1/dns/zones/${encodeURIComponent(zone)}/records`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  deleteRecord(
+    zone: string,
+    payload: { name: string; type: DnsRecordType },
+  ): Promise<{ deleted: boolean }> {
+    return request(`/v1/dns/zones/${encodeURIComponent(zone)}/records`, {
+      method: "DELETE",
+      body: JSON.stringify(payload),
+    });
+  },
+};
+
 export interface CustomDomain {
   id: string;
   domain: string;

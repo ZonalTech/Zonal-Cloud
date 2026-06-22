@@ -8,6 +8,11 @@ local machine and on an Ubuntu VPS.
 This document covers installation (local and VPS), prerequisites, how to access the
 dashboard and the admin panel, and the database setup.
 
+> 📘 **Going to production?** See
+> [`docs/DEPLOYMENT_AND_TROUBLESHOOTING.md`](docs/DEPLOYMENT_AND_TROUBLESHOOTING.md)
+> — an end-to-end runbook (publish images → install → domain + HTTPS → deploy apps)
+> with a catalogue of real errors and their fixes.
+
 > Status: in active development. Static and Node/full-stack apps deploy end to end from a Git
 > repo or a connected GitHub account (push-to-deploy). Full-stack apps are automatically given
 > a managed PostgreSQL database inside the shared server. App types: `static`, `node`,
@@ -150,7 +155,7 @@ in step 3 is running.
 | Reverse proxy | Traefik v3 | 8090 local / 80+443 VPS (8080 dashboard) | Routes each app at `<slug>.localhost` |
 | Database | PostgreSQL 16 | 5432 | Platform data + managed per-app databases |
 | Queue / cache | Redis 7 | 6379 | Build job queue and log buffering |
-| Operator CLI | `@zonal-cloud/zone` (npm) | n/a | Install/run/upgrade/backup the platform on a server |
+| Operator CLI | `@zonalcloud/zone` (npm) | n/a | Install/run/upgrade/backup the platform on a server |
 
 Infrastructure (Traefik, PostgreSQL, Redis) runs via `docker-compose.yml`. The API and the
 two frontends run as Node processes in development.
@@ -214,14 +219,14 @@ installation steps below begin with that one-time setup (Step 1).
 
 ## Install with the `zone` CLI (servers)
 
-`zone` (`@zonal-cloud/zone`, in [`apps/zone/`](apps/zone/)) is a standalone operator CLI that
+`zone` (`@zonalcloud/zone`, in [`apps/zone/`](apps/zone/)) is a standalone operator CLI that
 installs, runs, and maintains the platform on a Linux server **without cloning this repo**. It
 carries its own copy of the deploy files and pulls **prebuilt** `api`/`dashboard`/`admin`
 images from a container registry (GHCR by default).
 
 ```bash
-# Install the CLI from npm
-npm install -g @zonal-cloud/zone
+# Install the CLI from npm — use the scoped name and -g (not `npm install zone`)
+npm install -g @zonalcloud/zone
 zone --version
 
 # Or bootstrap Node + the CLI and install in one shot (scripts/install.sh):
@@ -851,7 +856,7 @@ zonal-cloud/
                  github, notifications, per-app database provisioning)
     dashboard/   User-facing React app
     admin/       Operator React app
-    zone/        @zonal-cloud/zone — standalone operator CLI (install/run/upgrade)
+    zone/        @zonalcloud/zone — standalone operator CLI (install/run/upgrade)
   services/
     proxy/       Traefik configuration and routing docs
   ci/            GitHub Actions deploy workflow and act setup

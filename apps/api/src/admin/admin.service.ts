@@ -802,6 +802,7 @@ export class AdminService {
         disk: dto.disk ?? '5g',
         buildMinutes: dto.buildMinutes ?? 60,
         maxConcurrentDeploys: dto.maxConcurrentDeploys ?? 2,
+        maxDnsZones: dto.maxDnsZones ?? 0,
       },
       update: {
         ...(dto.maxApps !== undefined && { maxApps: dto.maxApps }),
@@ -810,6 +811,7 @@ export class AdminService {
         ...(dto.disk !== undefined && { disk: dto.disk }),
         ...(dto.buildMinutes !== undefined && { buildMinutes: dto.buildMinutes }),
         ...(dto.maxConcurrentDeploys !== undefined && { maxConcurrentDeploys: dto.maxConcurrentDeploys }),
+        ...(dto.maxDnsZones !== undefined && { maxDnsZones: dto.maxDnsZones }),
       },
     });
 

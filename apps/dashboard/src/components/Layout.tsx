@@ -4,6 +4,7 @@ import { SidebarAccount } from "./SidebarAccount";
 
 const navLinks = [
   { to: "/apps", label: "Apps", end: true },
+  { to: "/dns", label: "DNS", end: false },
   { to: "/errors", label: "Errors", end: false },
 ];
 

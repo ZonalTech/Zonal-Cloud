@@ -158,6 +158,53 @@ services:
     command: redis-server --appendonly yes   # Enable AOF persistence.
 
   # ----------------------------------------------------------------
+  # PowerDNS Authoritative Server (managed DNS hosting product)
+  # Serves customer zones over DNS (host port 53 UDP+TCP) and is controlled by
+  # the API over its HTTP API (:8081, internal to zonal_net only — never exposed
+  # to the host). Zone/record data lives in a dedicated `pdns` database inside
+  # the shared Postgres server (gpgsql backend); the API also keeps a DnsZone
+  # row per customer zone for ownership/billing/quota.
+  #
+  # Customers sell-side flow: they point their domain's NS records at
+  # ns1.oponde.top / ns2.oponde.top (glue at the registrar), the API creates the
+  # zone here, and pdns answers authoritatively.
+  #
+  # The pdns schema must exist before pdns starts. It is created by
+  #   services/dns/schema.sql  (run once against the `pdns` database).
+  # See docs/dns.md for the one-time bootstrap (create db + load schema).
+  # ----------------------------------------------------------------
+  pdns:
+    image: powerdns/pdns-auth-49:latest
+    container_name: pdns
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      # Base config (gpgsql backend, API/webserver). Replaces the image default
+      # which would otherwise launch the sqlite3 backend and fail to start.
+      - ./services/dns/pdns.conf:/etc/powerdns/pdns.conf:ro
+    command:
+      # Secrets and per-deploy values stay out of the committed conf file.
+      - "--gpgsql-dbname=${PDNS_DB:-pdns}"
+      - "--gpgsql-user=${POSTGRES_USER:-zonal}"
+      - "--gpgsql-password=${POSTGRES_PASSWORD:-changeme}"
+      - "--api-key=${PDNS_API_KEY:-changeme-pdns-api-key}"
+      # Default SOA for newly created zones (customers point NS here).
+      - "--default-soa-content=ns1.${DNS_BASE_DOMAIN:-oponde.top} hostmaster.${DNS_BASE_DOMAIN:-oponde.top} 0 10800 3600 604800 3600"
+    ports:
+      # Authoritative DNS on the host's port 53 (UDP + TCP). Requires port 53 to
+      # be free — disable the host stub resolver if it holds 53:
+      #   sudo sed -i 's/#\?DNSStubListener=.*/DNSStubListener=no/' /etc/systemd/resolved.conf
+      #   sudo systemctl restart systemd-resolved
+      - "53:53/udp"
+      - "53:53/tcp"
+      # NOTE: 8081 (HTTP API) is intentionally NOT published to the host — it is
+      # only reachable in-network at http://pdns:8081 by the API container.
+    networks:
+      - zonal_net
+
+  # ----------------------------------------------------------------
   # Whoami test service
   # Validates the routing contract end-to-end (SPEC section 6).
   # After `docker compose up -d`, visit http://whoami.localhost

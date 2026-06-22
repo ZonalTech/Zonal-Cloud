@@ -70,6 +70,7 @@ const QUOTA_FIELDS: { key: keyof Omit<Quota, "id" | "organizationId">; label: st
   { key: "disk", label: "Disk (MB)" },
   { key: "buildMinutes", label: "Build Minutes" },
   { key: "maxConcurrentDeploys", label: "Max Concurrent Deploys" },
+  { key: "maxDnsZones", label: "Max DNS Zones (0 = off)" },
 ];
 
 function QuotaForm({
@@ -91,7 +92,11 @@ function QuotaForm({
     // Per the API contract, cpu/memory/disk are strings (e.g. "1", "512m", "2g")
     // while buildMinutes/maxConcurrentDeploys are numbers. Send each field with
     // the correct type so backend validation does not reject the request.
-    const numericFields = new Set(["buildMinutes", "maxConcurrentDeploys"]);
+    const numericFields = new Set([
+      "buildMinutes",
+      "maxConcurrentDeploys",
+      "maxDnsZones",
+    ]);
     const partial: Record<string, string | number> = {};
     for (const { key } of QUOTA_FIELDS) {
       const v = values[key];
@@ -127,7 +132,13 @@ function QuotaForm({
               {label}
             </label>
             <input
-              type={key === "buildMinutes" || key === "maxConcurrentDeploys" ? "number" : "text"}
+              type={
+                key === "buildMinutes" ||
+                key === "maxConcurrentDeploys" ||
+                key === "maxDnsZones"
+                  ? "number"
+                  : "text"
+              }
               min={0}
               value={values[key] ?? ""}
               onChange={(e) =>
@@ -351,6 +362,10 @@ function OrganizationDetailPane({
         <DetailRow label="Disk" value={q?.disk} mono zeroFallback />
         <DetailRow label="Build minutes" value={q?.buildMinutes} zeroFallback />
         <DetailRow label="Max concurrent deploys" value={q?.maxConcurrentDeploys} zeroFallback />
+        <DetailRow
+          label="DNS hosting"
+          value={q?.maxDnsZones ? `${q.maxDnsZones} zones` : "Off"}
+        />
         <DetailRow label="Org ID" value={org.id} mono />
       </dl>
     </div>

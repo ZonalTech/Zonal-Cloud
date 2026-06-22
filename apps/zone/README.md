@@ -3,7 +3,7 @@
 `zone` installs, runs, and maintains the **Zonal Cloud** platform on a Linux
 server. The CLI and the platform are **separate**:
 
-- **`zone`** (this package, `@zonal-cloud/zone`) — a standalone CLI installed
+- **`zone`** (this package, `@zonalcloud/zone`) — a standalone CLI installed
   from npm. It carries its own copy of the deployment files (compose + Traefik
   config) and writes them into a server **data directory**.
 - **The platform** — `api`, `dashboard`, and `admin` ship as **prebuilt images**
@@ -16,9 +16,21 @@ and the CLI pulls the images.
 
 ## Install the CLI
 
+Published on npm as **[`@zonalcloud/zone`](https://www.npmjs.com/package/@zonalcloud/zone)**.
+
 ```bash
-npm install -g @zonal-cloud/zone
+npm install -g @zonalcloud/zone
 zone --version
+```
+
+> Install the **scoped** name `@zonalcloud/zone` with **`-g`**. `npm install zone`
+> (unscoped, no `-g`) installs the wrong package locally and leaves you with
+> `zone: command not found`.
+
+Or run it once without installing:
+
+```bash
+npx @zonalcloud/zone --help
 ```
 
 Or use the bootstrap (installs Node + the CLI, then runs the install):

@@ -27,4 +27,10 @@ export class UpdateQuotaDto {
   @IsInt()
   @Min(1)
   maxConcurrentDeploys?: number;
+
+  // Managed-DNS add-on: number of zones the org may host. 0 = add-on disabled.
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  maxDnsZones?: number;
 }

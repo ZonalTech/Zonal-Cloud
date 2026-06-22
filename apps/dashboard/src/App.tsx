@@ -11,6 +11,7 @@ import { ForgotPasswordPage } from "./pages/ForgotPasswordPage";
 import { ResetPasswordPage } from "./pages/ResetPasswordPage";
 import { ImpersonatePage } from "./pages/ImpersonatePage";
 import { AppsPage } from "./pages/AppsPage";
+import { DnsPage } from "./pages/DnsPage";
 import { AppDetailPage } from "./pages/AppDetailPage";
 import { ErrorsPage } from "./pages/ErrorsPage";
 import { ErrorDetailPage } from "./pages/ErrorDetailPage";
@@ -45,6 +46,7 @@ function AppRoutes() {
       >
         <Route index element={<Navigate to="/apps" replace />} />
         <Route path="apps" element={<AppsPage />} />
+        <Route path="dns" element={<DnsPage />} />
         <Route path="apps/new" element={<NewAppRedirect />} />
         <Route path="apps/:id" element={<AppDetailPage />} />
         <Route path="errors" element={<ErrorsPage />} />

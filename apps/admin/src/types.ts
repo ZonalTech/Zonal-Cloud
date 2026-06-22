@@ -49,6 +49,8 @@ export interface Quota {
   disk: string;
   buildMinutes: number;
   maxConcurrentDeploys: number;
+  // Managed-DNS add-on: zones the org may host (0 = add-on disabled).
+  maxDnsZones: number;
 }
 
 export interface App {

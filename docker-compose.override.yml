@@ -1,0 +1,12 @@
+# LOCAL-ONLY override (not committed for prod use).
+# Maps PowerDNS to unprivileged host port 5353 so we can test with
+# `dig -p 5353 @127.0.0.1` without disabling the host's systemd-resolved (53).
+services:
+  pdns:
+    ports: !override
+      - "15353:53/udp"
+      - "15353:53/tcp"
+      # LOCAL-ONLY: expose the PowerDNS HTTP API to the host so the host-run
+      # (npm) API process can reach it. In prod the API runs in a container and
+      # uses http://pdns:8081 over zonal_net; this port is NOT published there.
+      - "8081:8081"

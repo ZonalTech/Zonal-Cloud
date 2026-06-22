@@ -10,6 +10,7 @@ import { AdminModule } from './admin/admin.module';
 import { DeployModule } from './deploy/deploy.module';
 import { GithubModule } from './github/github.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { DnsModule } from './dns/dns.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { NotificationsModule } from './notifications/notifications.module';
     DeployModule,
     GithubModule,
     NotificationsModule,
+    DnsModule,
   ],
   providers: [
     {

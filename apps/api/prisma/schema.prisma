@@ -80,6 +80,7 @@ model Organization {
   users    User[]
   projects Project[]
   quota    Quota?
+  dnsZones DnsZone[]
 }
 
 model User {
@@ -176,6 +177,9 @@ model Quota {
   disk                String @default("5g")
   buildMinutes        Int    @default(60)
   maxConcurrentDeploys Int   @default(2)
+  // Managed-DNS hosting product: how many DNS zones the org may host. 0 = the
+  // org has not bought the DNS add-on. Bumped by an admin/billing on purchase.
+  maxDnsZones         Int    @default(0)
 
   organization Organization @relation(fields: [organizationId], references: [id])
 }
@@ -448,4 +452,32 @@ model AgentToken {
   lastUsedAt DateTime?
   revokedAt  DateTime?
   createdAt  DateTime  @default(now())
+}
+
+enum DnsZoneStatus {
+  // Zone created in PowerDNS and serving; customer still needs to point their
+  // registrar NS records at ns1/ns2 for it to be authoritative on the internet.
+  active
+  // Soft-disabled (e.g. unpaid). Records remain in PowerDNS but the API blocks
+  // edits; a hard delete removes the zone from PowerDNS entirely.
+  suspended
+}
+
+// A managed DNS zone (one customer domain, e.g. "example.com") hosted on the
+// platform's PowerDNS nameservers (ns1/ns2). This is the ownership + billing
+// record in the app database. The authoritative record data (A/AAAA/CNAME/MX/…)
+// lives in PowerDNS's own `pdns` database and is manipulated via its HTTP API —
+// it is NOT duplicated here. Keyed by the canonical zone name (no trailing dot).
+model DnsZone {
+  id             String        @id @default(cuid())
+  organizationId String
+  // Canonical apex domain, lowercased, no trailing dot (e.g. "example.com").
+  // PowerDNS stores it with a trailing dot; the API normalizes on the boundary.
+  name           String        @unique
+  status         DnsZoneStatus @default(active)
+  createdAt      DateTime      @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([organizationId])
 }
