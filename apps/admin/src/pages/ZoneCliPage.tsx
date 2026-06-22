@@ -36,14 +36,25 @@ export function ZoneCliPage() {
       return;
     }
     setSavingMail(true);
+    setRunning("mailadmin"); // shows the "Running…" placeholder in the console
+    setResult(null);
     try {
-      await adminApi.setMailAdmin(mailUser.trim() || "admin", mailPass);
+      const res = await adminApi.setMailAdmin(mailUser.trim() || "admin", mailPass);
       setMailPass("");
-      success(`Mail admin set for ${mailUser.trim() || "admin"}. The mail server restarted.`);
+      // Surface the container recreate log in the same Output console so you can
+      // watch the mail server come back up.
+      setResult({
+        key: "mailadmin",
+        command: "recreate stalwart (apply mail admin)",
+        output: res.output || "(no output)",
+        exitCode: 0,
+      });
+      success(`Mail admin set for ${res.username}. The mail server is restarting.`);
     } catch (e) {
       toastError(e instanceof Error ? e.message : "Failed to set mail admin");
     } finally {
       setSavingMail(false);
+      setRunning(null);
     }
   }
 

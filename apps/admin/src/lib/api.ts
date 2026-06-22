@@ -353,7 +353,10 @@ export const adminApi = {
     });
   },
 
-  setMailAdmin(username: string, password: string): Promise<{ ok: true; username: string }> {
+  setMailAdmin(
+    username: string,
+    password: string,
+  ): Promise<{ ok: true; username: string; output: string }> {
     return request("/v1/admin/ops/mail-admin", {
       method: "POST",
       body: JSON.stringify({ username, password }),
