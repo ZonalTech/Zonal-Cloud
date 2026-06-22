@@ -1,13 +1,15 @@
 # Mirror the public base images the platform depends on into GHCR, so the VPS
 # never pulls from Docker Hub (which rate-limits anonymous pulls and 404s mid-
-# pull). GitHub's runners do the Hub pulls (higher limits); the VPS then pulls
-# everything from ghcr.io, where it is already authenticated.
+# pull). GitHub's runners do the Hub pulls; the VPS then pulls everything from
+# ghcr.io, where it is already authenticated.
 #
 # Mirrored as: ghcr.io/<owner>/zonal-cloud/mirror/<name>:<tag>
 # The compose files reference these via ${MIRROR_REGISTRY}/<name>:<tag>.
 #
-# Triggers: weekly schedule (keep tags fresh), manual dispatch, and on changes
-# to this workflow. Re-running is safe and idempotent.
+# A SINGLE job mirrors all images strictly one-at-a-time in a loop (with a gap
+# + retry between each) so we never burst GHCR's blob-upload rate limit (429).
+#
+# Triggers: weekly schedule, manual dispatch, and on changes to this workflow.
 
 name: mirror-images
 
@@ -30,21 +32,6 @@ permissions:
 jobs:
   mirror:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        # source = the Docker Hub reference; dest = the mirror repo name (the
-        # tag is preserved from the source).
-        include:
-          - { source: "traefik:v3.7.5", name: "traefik" }
-          - { source: "postgres:16-alpine", name: "postgres" }
-          - { source: "mariadb:10.6", name: "mariadb" }
-          - { source: "redis:7-alpine", name: "redis" }
-          - { source: "powerdns/pdns-auth-49:latest", name: "pdns-auth-49" }
-          - { source: "traefik/whoami:latest", name: "whoami" }
-          - { source: "nginx:1.27-alpine", name: "nginx" }
-          - { source: "axllent/mailpit:latest", name: "mailpit" }
-          - { source: "stalwartlabs/stalwart:latest", name: "stalwart" }
     steps:
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -53,19 +40,51 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Mirror image
-        env:
-          SOURCE: ${{ matrix.source }}
-          NAME: ${{ matrix.name }}
+      - name: Mirror images sequentially
         run: |
-          OWNER="${GITHUB_REPOSITORY%%/*}"
-          OWNER="${OWNER,,}"                 # GHCR requires lowercase
-          REPO="${GITHUB_REPOSITORY,,}"      # e.g. zonaltech/zonal-cloud
-          TAG="${SOURCE##*:}"                # tag portion of the source
-          DEST="${REGISTRY}/${REPO}/mirror/${NAME}:${TAG}"
+          REPO="${GITHUB_REPOSITORY,,}"   # e.g. zonaltech/zonal-cloud (lowercase)
+          BASE="${REGISTRY}/${REPO}/mirror"
 
-          echo "Mirroring ${SOURCE} -> ${DEST}"
-          # Pull all platforms so the mirror works on any arch the VPS runs.
-          docker buildx imagetools create --tag "${DEST}" "docker.io/${SOURCE}" \
-            || { docker pull "${SOURCE}" && docker tag "${SOURCE}" "${DEST}" && docker push "${DEST}"; }
-          echo "Done: ${DEST}"
+          # "source|dest-name" — tag is preserved from the source.
+          IMAGES="
+          traefik:v3.7.5|traefik
+          postgres:16-alpine|postgres
+          mariadb:10.6|mariadb
+          redis:7-alpine|redis
+          powerdns/pdns-auth-49:latest|pdns-auth-49
+          traefik/whoami:latest|whoami
+          nginx:1.27-alpine|nginx
+          axllent/mailpit:latest|mailpit
+          stalwartlabs/stalwart:latest|stalwart
+          "
+
+          fail=0
+          for entry in $IMAGES; do
+            [ -z "$entry" ] && continue
+            SRC="${entry%%|*}"
+            NAME="${entry##*|}"
+            TAG="${SRC##*:}"
+            DEST="${BASE}/${NAME}:${TAG}"
+
+            echo "::group::Mirroring ${SRC} -> ${DEST}"
+            ok=0
+            for attempt in 1 2 3 4 5; do
+              if docker buildx imagetools create --tag "${DEST}" "docker.io/${SRC}"; then
+                ok=1; break
+              fi
+              echo "attempt ${attempt} failed (likely GHCR 429) — backing off..."
+              sleep $((attempt * 15))
+            done
+            if [ "$ok" != "1" ]; then
+              echo "::error::Failed to mirror ${SRC} after retries"
+              fail=1
+            else
+              echo "Done: ${DEST}"
+            fi
+            echo "::endgroup::"
+
+            # Gap between images so we stay well under GHCR's per-minute limit.
+            sleep 10
+          done
+
+          [ "$fail" = "0" ] || { echo "One or more images failed to mirror."; exit 1; }
