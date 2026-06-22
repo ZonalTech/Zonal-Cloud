@@ -53,6 +53,19 @@ export class AdminController {
     return this.ops.runCommand(actor.id, key);
   }
 
+  @Post('ops/mail-admin')
+  @Roles('superadmin')
+  setMailAdmin(
+    @CurrentUser() actor: AuthUser,
+    @Body() body: { username?: string; password?: string },
+  ) {
+    return this.ops.setMailAdmin(
+      actor.id,
+      body?.username ?? 'admin',
+      body?.password ?? '',
+    );
+  }
+
   // ---- DNS (cross-tenant) ------------------------------------------------
 
   @Get('dns/zones')

@@ -1,5 +1,6 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import * as Docker from 'dockerode';
+import * as bcrypt from 'bcrypt';
 import { AuditService } from '../common/audit.service';
 
 /**
@@ -209,6 +210,94 @@ export class OpsService {
     });
 
     return { command: `zone ${spec.argv.join(' ')}`, output, exitCode };
+  }
+
+  /**
+   * Set the Stalwart mail server's admin login (user + password).
+   *
+   * Stalwart only reads FALLBACK_ADMIN_* on first init, so changing .env after
+   * the data volume exists does nothing — that's why the seeded password stops
+   * working. Here we write the credentials directly into Stalwart's persistent
+   * config (config.toml on the data volume) via a one-shot helper that mounts
+   * the same volume, then restart the container so it takes effect.
+   *
+   * The password is hashed with the platform's own bcrypt before storage, so we
+   * never persist it in plaintext and don't depend on a Stalwart CLI flavour.
+   */
+  async setMailAdmin(
+    actorUserId: string,
+    username: string,
+    password: string,
+  ): Promise<{ ok: true; username: string }> {
+    const user = (username || 'admin').trim();
+    if (!/^[A-Za-z0-9@._-]{1,128}$/.test(user)) {
+      throw new BadRequestException({ code: 'BAD_USER', message: 'Invalid admin username.' });
+    }
+    if (!password || password.length < 8) {
+      throw new BadRequestException({
+        code: 'WEAK_PASSWORD',
+        message: 'Password must be at least 8 characters.',
+      });
+    }
+
+    // Confirm the stalwart container exists before doing anything.
+    let stalwart: Docker.Container;
+    try {
+      stalwart = this.docker.getContainer('stalwart');
+      await stalwart.inspect();
+    } catch {
+      throw new BadRequestException({
+        code: 'MAIL_NOT_DEPLOYED',
+        message: 'The mail server is not running. Deploy it first (deploymail).',
+      });
+    }
+
+    // bcrypt hash of the new password (Stalwart accepts standard PHC hashes).
+    const hash = await bcrypt.hash(password, 10);
+
+    // Append/replace the fallback-admin keys in Stalwart's config on the volume.
+    // We use a tiny sh snippet inside the container (it has /opt/stalwart-mail).
+    const cfg = '/opt/stalwart-mail/etc/config.toml';
+    const b64hash = Buffer.from(hash, 'utf8').toString('base64');
+    const script =
+      `set -e; ` +
+      `mkdir -p /opt/stalwart-mail/etc; touch ${cfg}; ` +
+      // Strip any existing authentication.fallback-admin block, then append fresh.
+      `grep -v '^authentication.fallback-admin' ${cfg} > ${cfg}.tmp || true; ` +
+      `mv ${cfg}.tmp ${cfg}; ` +
+      `echo "authentication.fallback-admin.user = \\"${user}\\"" >> ${cfg}; ` +
+      `echo "authentication.fallback-admin.secret = \\"$(echo ${b64hash} | base64 -d)\\"" >> ${cfg}`;
+
+    const exec = await stalwart.exec({
+      Cmd: ['sh', '-c', script],
+      AttachStdout: true,
+      AttachStderr: true,
+    });
+    const stream = await exec.start({});
+    await new Promise<void>((resolve) => {
+      stream.on('data', () => undefined);
+      stream.on('end', () => resolve());
+      stream.on('error', () => resolve());
+    });
+    const info = await exec.inspect();
+    if ((info.ExitCode ?? 0) !== 0) {
+      throw new BadRequestException({
+        code: 'MAIL_CONFIG_FAILED',
+        message: 'Could not write mail admin config inside the container.',
+      });
+    }
+
+    // Restart so Stalwart reloads the config.
+    await stalwart.restart().catch(() => undefined);
+
+    await this.audit.log({
+      actorUserId,
+      action: 'platform.mail.set_admin',
+      target: 'stalwart',
+      metadata: { username: user },
+    });
+
+    return { ok: true, username: user };
   }
 
   /** Pull the helper image if it isn't present locally. */

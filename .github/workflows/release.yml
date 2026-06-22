@@ -80,3 +80,59 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  # After all three images are published, roll them out to the VPS by running
+  # `zone upgrade` over SSH — so a push to main deploys end-to-end with no manual
+  # step. Skips cleanly (no failure) when the deploy secrets aren't configured.
+  #
+  # Required repo secrets:
+  #   VPS_HOST            - the server's host/IP (e.g. 209.151.144.92)
+  #   VPS_SSH_USER        - SSH user (e.g. root)
+  #   VPS_SSH_KEY         - a private key authorized on the VPS
+  # Optional repo variable:
+  #   VPS_SSH_PORT        - SSH port (default 22)
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    # Only auto-deploy default-branch / tag releases, never arbitrary dispatch.
+    if: github.event_name == 'push'
+    steps:
+      - name: Check deploy config
+        id: cfg
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_SSH_USER: ${{ secrets.VPS_SSH_USER }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          if [ -z "$VPS_HOST" ] || [ -z "$VPS_SSH_USER" ] || [ -z "$VPS_SSH_KEY" ]; then
+            echo "::notice::VPS deploy secrets not set (VPS_HOST/VPS_SSH_USER/VPS_SSH_KEY) — skipping auto-deploy."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install SSH key
+        if: steps.cfg.outputs.configured == 'true'
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "${{ vars.VPS_SSH_PORT || 22 }}" -H "${{ secrets.VPS_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Upgrade platform on the VPS
+        if: steps.cfg.outputs.configured == 'true'
+        env:
+          PORT: ${{ vars.VPS_SSH_PORT || 22 }}
+          USER: ${{ secrets.VPS_SSH_USER }}
+          HOST: ${{ secrets.VPS_HOST }}
+        run: |
+          # Refresh the CLI from npm, then upgrade. `zone upgrade` pulls the new
+          # images we just pushed, re-materializes compose, migrates, and
+          # restarts — DNS + mail + apps all roll forward.
+          ssh -i ~/.ssh/deploy_key -p "$PORT" "$USER@$HOST" bash -lc '
+            set -e
+            npm i -g @zonalcloud/zone@latest >/dev/null 2>&1 || npm i -g @zonalcloud/zone@latest
+            hash -r || true
+            cd /opt/zonal-cloud
+            zone upgrade --no-backup
+          '

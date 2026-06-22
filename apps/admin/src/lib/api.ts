@@ -353,6 +353,13 @@ export const adminApi = {
     });
   },
 
+  setMailAdmin(username: string, password: string): Promise<{ ok: true; username: string }> {
+    return request("/v1/admin/ops/mail-admin", {
+      method: "POST",
+      body: JSON.stringify({ username, password }),
+    });
+  },
+
   // ---- DNS (cross-tenant) ----
   listDnsZones(): Promise<AdminDnsZone[]> {
     return request("/v1/admin/dns/zones");

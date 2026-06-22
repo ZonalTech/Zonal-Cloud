@@ -23,7 +23,29 @@ export function ZoneCliPage() {
   const [result, setResult] = useState<(OpsResult & { key: string }) | null>(null);
   const [pending, setPending] = useState<OpsCommand | null>(null);
 
+  // Mail admin credential form.
+  const [mailUser, setMailUser] = useState("admin");
+  const [mailPass, setMailPass] = useState("");
+  const [savingMail, setSavingMail] = useState(false);
+
   const mailUrl = getMailUrl();
+
+  async function saveMailAdmin() {
+    if (mailPass.length < 8) {
+      toastError("Mail password must be at least 8 characters.");
+      return;
+    }
+    setSavingMail(true);
+    try {
+      await adminApi.setMailAdmin(mailUser.trim() || "admin", mailPass);
+      setMailPass("");
+      success(`Mail admin set for ${mailUser.trim() || "admin"}. The mail server restarted.`);
+    } catch (e) {
+      toastError(e instanceof Error ? e.message : "Failed to set mail admin");
+    } finally {
+      setSavingMail(false);
+    }
+  }
 
   const load = useCallback(() => {
     setLoading(true);
@@ -98,6 +120,48 @@ export function ZoneCliPage() {
             no URL configured
           </span>
         )}
+      </div>
+
+      {/* Mail admin credentials — set/reset the Stalwart admin login. */}
+      <div className="mt-3 px-4 py-3 rounded border border-brand-200 dark:border-brand-700 bg-white dark:bg-brand-900 shrink-0">
+        <div className="text-sm font-medium text-brand-800 dark:text-brand-100 mb-1">
+          Mail admin login
+        </div>
+        <p className="text-xs text-brand-500 dark:text-brand-400 mb-2">
+          Set or reset the mail server's admin username & password. Applies
+          immediately (the mail server restarts). Use this when the seeded
+          password isn't working.
+        </p>
+        <div className="flex flex-wrap items-end gap-2">
+          <label className="flex flex-col gap-1">
+            <span className="text-xs text-brand-500 dark:text-brand-400">Username</span>
+            <input
+              value={mailUser}
+              onChange={(e) => setMailUser(e.target.value)}
+              placeholder="admin"
+              autoComplete="off"
+              className="w-48 px-3 py-2 rounded border border-brand-300 dark:border-brand-600 bg-white dark:bg-brand-800 text-brand-900 dark:text-brand-50 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs text-brand-500 dark:text-brand-400">New password (min 8)</span>
+            <input
+              type="password"
+              value={mailPass}
+              onChange={(e) => setMailPass(e.target.value)}
+              placeholder="••••••••"
+              autoComplete="new-password"
+              className="w-56 px-3 py-2 rounded border border-brand-300 dark:border-brand-600 bg-white dark:bg-brand-800 text-brand-900 dark:text-brand-50 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+            />
+          </label>
+          <button
+            onClick={saveMailAdmin}
+            disabled={savingMail || mailPass.length < 8}
+            className="px-4 py-2 rounded bg-brand-700 dark:bg-brand-200 text-white dark:text-brand-900 text-sm font-semibold hover:bg-brand-800 dark:hover:bg-brand-100 disabled:opacity-50 transition-colors"
+          >
+            {savingMail ? "Saving…" : "Set mail admin"}
+          </button>
+        </div>
       </div>
 
       <div className="mt-4 px-4 py-3 rounded border border-brand-200 dark:border-brand-700 bg-brand-50 dark:bg-brand-800/40 text-sm text-brand-700 dark:text-brand-200">

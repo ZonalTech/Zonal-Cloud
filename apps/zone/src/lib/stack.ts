@@ -83,6 +83,18 @@ export async function up(ctx: Ctx, pullFirst = false): Promise<number> {
   });
 }
 
+/**
+ * Bring up a single service (and its dependencies), waiting until it is
+ * healthy/running. Used to start postgres before the DNS bootstrap so pdns can
+ * connect on its first boot.
+ */
+export async function upService(ctx: Ctx, service: string): Promise<number> {
+  return ctx.docker.composeStream(
+    composeArgs(ctx, ['up', '-d', '--wait', service]),
+    { cwd: ctx.paths.dataDir, env: ENV },
+  );
+}
+
 export async function down(ctx: Ctx, volumes = false): Promise<number> {
   const args = ['down'];
   if (volumes) args.push('--volumes');

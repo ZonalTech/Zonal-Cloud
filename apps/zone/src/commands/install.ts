@@ -28,9 +28,9 @@ import { buildEnv, readEnvFile, writeEnvFile, EnvMap } from '../lib/env';
 import {
   createSuperadmin,
   pull,
-  restart,
   runMigrations,
   up,
+  upService,
   waitForApi,
 } from '../lib/stack';
 import { bootstrapDns, freePort53 } from '../lib/dnsbootstrap';
@@ -271,12 +271,17 @@ export function registerInstall(program: Command): void {
       ui.heading('Managed DNS');
       freePort53();
 
-      // 6. pull + up
+      // 6. pull, then start Postgres first and bootstrap the DNS backend BEFORE
+      // the rest comes up — so pdns finds its database on first boot (no error,
+      // no restart needed).
       ui.heading('Pulling images and starting the stack');
       const pullCode = await pull(ctx);
       if (pullCode !== 0) {
         die('docker compose pull failed. Check the registry/tag and that images are published (or that you are logged in for a private registry).');
       }
+      await upService(ctx, 'postgres');
+      bootstrapDns(ctx);
+
       const upCode = await up(ctx, false);
       if (upCode !== 0) die('docker compose up failed. See output above.');
       ui.ok('Containers are up.');
@@ -286,11 +291,6 @@ export function registerInstall(program: Command): void {
       const migCode = await runMigrations(ctx);
       if (migCode !== 0) die('Prisma migrate deploy failed. See output above.');
       ui.ok('Migrations applied.');
-
-      // 8. DNS backend bootstrap (pdns db + schema), then (re)start pdns so it
-      // connects cleanly. Postgres is up by now; this is idempotent.
-      bootstrapDns(ctx);
-      await restart(ctx, 'pdns');
 
       // 6. superadmin
       ui.heading('Superadmin');

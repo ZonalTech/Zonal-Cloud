@@ -8,7 +8,7 @@ import { Command } from 'commander';
 import { Ctx, composeFiles, loadContext } from '../lib/context';
 import { runStream } from '../lib/exec';
 import { buildEnv, readEnvFile, writeEnvFile } from '../lib/env';
-import { down, restart, runMigrations, up } from '../lib/stack';
+import { down, pull, runMigrations, up, upService } from '../lib/stack';
 import { bootstrapDns, freePort53 } from '../lib/dnsbootstrap';
 import { materializeTemplates } from '../lib/templates';
 import { renderTraefikProd, looksLikeEmail } from '../lib/tls';
@@ -81,17 +81,20 @@ export function registerMaintenance(program: Command): void {
       freePort53();
 
       ui.heading('Pulling images and restarting');
-      const upCode = await up(ctx, true); // pull, then up
-      if (upCode !== 0) die('Pull/up failed. See output above.');
+      const pullCode = await pull(ctx);
+      if (pullCode !== 0) die('Pull failed. See output above.');
+
+      // Start Postgres and bootstrap the DNS backend BEFORE the rest, so pdns
+      // finds its database on first boot (no error, no restart needed).
+      await upService(ctx, 'postgres');
+      bootstrapDns(ctx);
+
+      const upCode = await up(ctx, false);
+      if (upCode !== 0) die('Up failed. See output above.');
 
       ui.heading('Migrations');
       const mig = await runMigrations(ctx);
       if (mig !== 0) die('Migrations failed after upgrade. The stack is up but the schema may be stale.');
-
-      // Ensure the managed-DNS backend (pdns db + schema) is bootstrapped, then
-      // restart pdns so it picks up the schema/env. Idempotent.
-      bootstrapDns(ctx);
-      await restart(ctx, 'pdns');
       ui.ok('Upgrade complete.');
     });
 

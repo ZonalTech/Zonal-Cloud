@@ -17,8 +17,6 @@
 #   - host=redis     port=6379  (from another container on zonal_net)
 #   - host=localhost port=6379  (from the host machine / npm dev process)
 
-version: "3.9"
-
 # ------------------------------------------------------------------
 # Shared network
 # All infrastructure services and deployed app containers join this

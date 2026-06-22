@@ -856,6 +856,10 @@ export class AppsService {
     // Tear down the running container (best-effort).
     await this.stopContainer(app.subdomain);
 
+    // Remove every image this app ever built (one per deploy) — biggest disk
+    // leak otherwise. Safe now that the container is gone. Best-effort.
+    await this.removeAppImages(app.subdomain);
+
     // Frappe apps: drop the managed MariaDB database/user and remove the named
     // volume holding the bench `sites/` dir. All best-effort — a failure here
     // must not block deletion of the app record.
@@ -1467,6 +1471,35 @@ export class AppsService {
     } catch (err) {
       console.warn(
         `[apps] removing volume ${volumeName} failed:`,
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
+
+  // Remove every image built for an app (best-effort). Each deploy tags a fresh
+  // image `zonal-app-<subdomain>:<deploymentId>`, so without this they pile up
+  // on disk forever. Called on delete after the container is removed.
+  private async removeAppImages(subdomain: string): Promise<void> {
+    try {
+      const docker = new Docker({ socketPath: '/var/run/docker.sock' });
+      const repo = `zonal-app-${subdomain}`;
+      // Match by repo tag prefix — covers all per-deployment tags of this app.
+      const images = await docker.listImages({
+        filters: { reference: [`${repo}:*`] },
+      });
+      for (const img of images) {
+        try {
+          await docker.getImage(img.Id).remove({ force: true });
+        } catch (err) {
+          console.warn(
+            `[apps] removing image ${img.Id} (${repo}) failed:`,
+            err instanceof Error ? err.message : err,
+          );
+        }
+      }
+    } catch (err) {
+      console.warn(
+        `[apps] listing images for ${subdomain} failed:`,
         err instanceof Error ? err.message : err,
       );
     }
