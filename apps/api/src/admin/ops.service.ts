@@ -8,10 +8,12 @@ import { AuditService } from '../common/audit.service';
  * into the VPS.
  *
  * HOW: the API container can't run host shell, but it holds the Docker socket.
- * We launch a one-shot helper container (node:alpine) that installs the same
- * published `zone` CLI and runs it against the host — mounting the host Docker
- * socket and the platform data dir (/opt/zonal-cloud). The CLI then drives
- * `docker compose` on the host exactly as a human would.
+ * We launch a one-shot helper container based on `docker:cli` (which ships the
+ * docker CLI + compose plugin), add Node, install the published `zone` CLI, and
+ * run it against the host — mounting the host Docker socket and the platform
+ * data dir (/opt/zonal-cloud). The CLI then drives `docker compose` on the host
+ * exactly as a human would. The image MUST contain the docker CLI + compose,
+ * because the zone CLI shells out to `docker` / `docker compose`.
  *
  * SAFETY:
  *   - superadmin-only (enforced at the controller).
@@ -19,7 +21,13 @@ import { AuditService } from '../common/audit.service';
  *     user input, so there is no arbitrary command execution.
  *   - every run is audited (action + actor + exit code).
  */
-export type ZoneCommandKey = 'upgrade' | 'status' | 'restart' | 'migrate' | 'backup';
+export type ZoneCommandKey =
+  | 'upgrade'
+  | 'status'
+  | 'restart'
+  | 'migratedb'
+  | 'backupdb'
+  | 'deploymail';
 
 interface ZoneCommandSpec {
   /** argv passed to the `zone` binary (no shell, no interpolation). */
@@ -28,6 +36,8 @@ interface ZoneCommandSpec {
   label: string;
   /** Whether this mutates the running stack (UI can warn/confirm). */
   mutating: boolean;
+  /** Plain-language explanation shown in the confirm modal. */
+  description: string;
 }
 
 @Injectable()
@@ -39,27 +49,77 @@ export class OpsService {
   // the helper so the CLI operates on the real deployment.
   private readonly dataDir = process.env.ZONAL_DATA_DIR || '/opt/zonal-cloud';
   // CLI package + helper image, overridable for pinning/air-gapped registries.
+  // The image MUST carry the docker CLI + compose plugin; `docker:cli` does.
+  // Node is added at runtime (Alpine) so the published zone CLI can run.
   private readonly cliPkg = process.env.ZONAL_CLI_PACKAGE || '@zonalcloud/zone';
-  private readonly helperImage = process.env.ZONAL_OPS_IMAGE || 'node:20-alpine';
+  private readonly helperImage = process.env.ZONAL_OPS_IMAGE || 'docker:cli';
   private readonly maxOutput = 512 * 1024; // 512KB cap
 
   // The ONLY commands that can be triggered. argv is fixed.
   private readonly COMMANDS: Record<ZoneCommandKey, ZoneCommandSpec> = {
-    upgrade: { argv: ['upgrade', '--no-backup'], label: 'Upgrade platform', mutating: true },
-    status: { argv: ['status'], label: 'Stack status', mutating: false },
-    restart: { argv: ['restart'], label: 'Restart stack', mutating: true },
-    migrate: { argv: ['migrate'], label: 'Run DB migrations', mutating: true },
-    backup: { argv: ['backup'], label: 'Backup database', mutating: false },
+    upgrade: {
+      argv: ['upgrade', '--no-backup'],
+      label: 'upgrade',
+      mutating: true,
+      description:
+        'Pulls the latest platform images, refreshes config, frees DNS port 53, ' +
+        'runs database migrations, and restarts the stack. Brief downtime is possible.',
+    },
+    status: {
+      argv: ['status'],
+      label: 'status',
+      mutating: false,
+      description: 'Shows the state and health of every platform container. Read-only.',
+    },
+    restart: {
+      argv: ['restart'],
+      label: 'restart',
+      mutating: true,
+      description:
+        'Restarts all platform containers without pulling new images. ' +
+        'Causes a brief interruption while services come back up.',
+    },
+    migratedb: {
+      argv: ['migrate'],
+      label: 'migratedb',
+      mutating: true,
+      description:
+        'Applies any pending database schema migrations (prisma migrate deploy). ' +
+        'Run after an upgrade if the schema is behind.',
+    },
+    backupdb: {
+      argv: ['backup'],
+      label: 'backupdb',
+      mutating: false,
+      description:
+        'Dumps the Postgres database to a timestamped gzip file in the backups ' +
+        'directory on the server. Safe; does not change anything.',
+    },
+    deploymail: {
+      argv: ['up'],
+      label: 'deploymail',
+      mutating: true,
+      description:
+        'Brings up any platform services that are defined but not yet running — ' +
+        'including the Stalwart mail server — without pulling new images. ' +
+        'Use this to deploy mail after it was added to the stack.',
+    },
   };
 
   constructor(private readonly audit: AuditService) {}
 
   /** Metadata for the UI — the buttons it should render. */
-  listCommands(): Array<{ key: ZoneCommandKey; label: string; mutating: boolean }> {
+  listCommands(): Array<{
+    key: ZoneCommandKey;
+    label: string;
+    mutating: boolean;
+    description: string;
+  }> {
     return (Object.keys(this.COMMANDS) as ZoneCommandKey[]).map((key) => ({
       key,
       label: this.COMMANDS[key].label,
       mutating: this.COMMANDS[key].mutating,
+      description: this.COMMANDS[key].description,
     }));
   }
 
@@ -79,12 +139,15 @@ export class OpsService {
       });
     }
 
-    // The helper installs the CLI globally then runs it. ZONAL_DATA_DIR points
-    // the CLI at the mounted host data dir; the host docker socket lets its
-    // `docker compose` calls act on the real stack.
+    // The helper (docker:cli, Alpine) adds Node, installs the CLI globally, then
+    // runs it. ZONAL_DATA_DIR points the CLI at the mounted host data dir; the
+    // host docker socket lets its `docker compose` calls act on the real stack.
+    const zoneArgs = spec.argv.map((a) => this.shellSafe(a)).join(' ');
     const inner =
-      `npm i -g ${this.shellSafe(this.cliPkg)} >/tmp/cli-install.log 2>&1 && ` +
-      `zone ${spec.argv.map((a) => this.shellSafe(a)).join(' ')}`;
+      'set -e; ' +
+      'command -v node >/dev/null 2>&1 || apk add --no-cache nodejs npm >/tmp/node-install.log 2>&1; ' +
+      `npm i -g ${this.shellSafe(this.cliPkg)} >/tmp/cli-install.log 2>&1; ` +
+      `zone ${zoneArgs}`;
 
     await this.pullIfMissing(this.helperImage);
 

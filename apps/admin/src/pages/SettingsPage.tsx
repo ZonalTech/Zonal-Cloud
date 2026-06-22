@@ -168,6 +168,7 @@ function AgentTokensSection() {
 function McpConnectionSection() {
   const [agentApiUrl, setAgentApiUrl] = useState("");
   const [agentToken, setAgentToken] = useState("");
+  const [agentId, setAgentId] = useState("");
   const [tokenSet, setTokenSet] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -180,6 +181,7 @@ function McpConnectionSection() {
       .then((s) => {
         setAgentApiUrl(s.agentApiUrl);
         setTokenSet(s.agentTokenSet);
+        setAgentId(s.agentId ?? "");
       })
       .catch((err: unknown) => setError(err instanceof Error ? err.message : "Failed to load settings"))
       .finally(() => setLoading(false));
@@ -194,10 +196,14 @@ function McpConnectionSection() {
     setSaving(true);
     try {
       // Only send the token if the operator typed a new one (keeps the existing one otherwise).
-      const payload: { agentApiUrl?: string; agentToken?: string } = { agentApiUrl };
+      const payload: { agentApiUrl?: string; agentToken?: string; agentId?: string } = {
+        agentApiUrl,
+        agentId,
+      };
       if (agentToken.trim()) payload.agentToken = agentToken.trim();
       const s = await adminApi.updateSettings(payload);
       setTokenSet(s.agentTokenSet);
+      setAgentId(s.agentId ?? "");
       setAgentToken("");
       setNotice("Settings saved.");
     } catch (err) {
@@ -256,6 +262,27 @@ function McpConnectionSection() {
             autoComplete="off"
             className="px-3 py-2 rounded border border-brand-300 dark:border-brand-600 bg-white dark:bg-brand-800 text-brand-900 dark:text-brand-50 text-sm placeholder-brand-400 dark:placeholder-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500 transition-colors"
           />
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="agentId" className="text-sm font-medium text-brand-700 dark:text-brand-300">
+            Agent ID{" "}
+            <span className="font-normal text-brand-400 dark:text-brand-500">
+              (for AI deploy-log analysis)
+            </span>
+          </label>
+          <input
+            id="agentId"
+            type="text"
+            value={agentId}
+            onChange={(e) => setAgentId(e.target.value)}
+            placeholder="ag:..."
+            autoComplete="off"
+            className="px-3 py-2 rounded border border-brand-300 dark:border-brand-600 bg-white dark:bg-brand-800 text-brand-900 dark:text-brand-50 text-sm placeholder-brand-400 dark:placeholder-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500 transition-colors"
+          />
+          <p className="text-xs text-brand-400 dark:text-brand-500">
+            The Base URL + token + this Agent ID also authenticate the “AI analyze” button on the Errors page.
+          </p>
         </div>
 
         {error && (

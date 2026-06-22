@@ -232,8 +232,12 @@ export class AdminController {
   }
 
   @Post('deployments/:id/analyze')
-  analyzeDeployment(@CurrentUser() actor: AuthUser, @Param('id') id: string) {
-    return this.adminService.analyzeDeployment(actor.id, id);
+  analyzeDeployment(
+    @CurrentUser() actor: AuthUser,
+    @Param('id') id: string,
+    @Body() body: { errorReason?: string },
+  ) {
+    return this.adminService.analyzeDeployment(actor.id, id, body?.errorReason);
   }
 
   @Post('apps/:id/analyze')

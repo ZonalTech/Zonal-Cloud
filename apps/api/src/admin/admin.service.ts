@@ -30,6 +30,7 @@ import { UpdateInfraSettingsDto } from './dto/update-infra-settings.dto';
 // Keys for the agent/MCP connection settings. The token is stored encrypted.
 const SETTING_AGENT_API_URL = 'agent_api_url';
 const SETTING_AGENT_TOKEN = 'agent_token';
+const SETTING_AGENT_ID = 'agent_id';
 
 const USER_SELECT = {
   id: true,
@@ -150,9 +151,9 @@ export class AdminService {
     };
   }
 
-  /** Whether AI features are available (Mistral configured). */
-  aiStatus() {
-    return { enabled: this.ai.configured };
+  /** Whether AI features are available (Mistral configured via UI or env). */
+  async aiStatus() {
+    return { enabled: await this.ai.isConfigured() };
   }
 
   // ---- Platform settings (agent / MCP connection) ----
@@ -161,12 +162,13 @@ export class AdminService {
   // only whether one is set, so the field can show "configured".
   async getSettings() {
     const rows = await this.prisma.setting.findMany({
-      where: { key: { in: [SETTING_AGENT_API_URL, SETTING_AGENT_TOKEN] } },
+      where: { key: { in: [SETTING_AGENT_API_URL, SETTING_AGENT_TOKEN, SETTING_AGENT_ID] } },
     });
     const map = new Map(rows.map((r) => [r.key, r]));
     return {
       agentApiUrl: map.get(SETTING_AGENT_API_URL)?.value ?? '',
       agentTokenSet: map.has(SETTING_AGENT_TOKEN),
+      agentId: map.get(SETTING_AGENT_ID)?.value ?? '',
     };
   }
 
@@ -184,6 +186,13 @@ export class AdminService {
         where: { key: SETTING_AGENT_TOKEN },
         create: { key: SETTING_AGENT_TOKEN, value: encrypt(dto.agentToken), encrypted: true },
         update: { value: encrypt(dto.agentToken), encrypted: true },
+      });
+    }
+    if (dto.agentId !== undefined) {
+      await this.prisma.setting.upsert({
+        where: { key: SETTING_AGENT_ID },
+        create: { key: SETTING_AGENT_ID, value: dto.agentId, encrypted: false },
+        update: { value: dto.agentId, encrypted: false },
       });
     }
 
@@ -451,7 +460,11 @@ export class AdminService {
     };
   }
 
-  async analyzeDeployment(actorId: string, deploymentId: string) {
+  async analyzeDeployment(
+    actorId: string,
+    deploymentId: string,
+    errorReason?: string,
+  ) {
     const deployment = await this.prisma.deployment.findUnique({
       where: { id: deploymentId },
       include: { app: { select: { name: true, type: true } } },
@@ -467,6 +480,7 @@ export class AdminService {
       appName: deployment.app?.name ?? 'unknown',
       appType: deployment.app?.type ?? 'unknown',
       log,
+      errorReason: errorReason?.trim() || undefined,
     });
 
     await this.auditService.log({

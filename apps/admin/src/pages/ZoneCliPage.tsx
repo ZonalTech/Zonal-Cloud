@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useState } from "react";
-import { adminApi, type OpsCommand, type OpsResult } from "../lib/api";
+import { adminApi, getMailUrl, type OpsCommand, type OpsResult } from "../lib/api";
 import { useToast } from "../context/ToastContext";
 import { PageHeader } from "../components/PageHeader";
+import { ConfirmDialog } from "../components/ConfirmDialog";
 
 /**
  * Zone CLI — trigger platform operations on the VPS from the admin UI, so an
- * operator can upgrade / restart / migrate / back up the platform without
+ * operator can upgrade / restart / migrate / back up / deploy mail without
  * SSHing in. Superadmin-only (the API enforces it too).
  *
  * Each command runs the published `zone` CLI in a one-shot helper container on
- * the host; the combined output + exit code are shown below.
+ * the host; the combined output + exit code stream into the console below.
+ * Before any command runs, a modal explains in plain language what it does.
  */
 export function ZoneCliPage() {
   const { success, error: toastError } = useToast();
@@ -19,6 +21,9 @@ export function ZoneCliPage() {
 
   const [running, setRunning] = useState<string | null>(null);
   const [result, setResult] = useState<(OpsResult & { key: string }) | null>(null);
+  const [pending, setPending] = useState<OpsCommand | null>(null);
+
+  const mailUrl = getMailUrl();
 
   const load = useCallback(() => {
     setLoading(true);
@@ -35,17 +40,9 @@ export function ZoneCliPage() {
     load();
   }, [load]);
 
-  const run = async (cmd: OpsCommand) => {
-    if (running) return;
-    if (cmd.mutating) {
-      const ok = confirm(
-        `Run "${cmd.label}" on the platform now?\n\n` +
-          (cmd.key === "upgrade"
-            ? "This pulls the latest images and restarts the stack. Brief downtime is possible."
-            : "This changes the running stack."),
-      );
-      if (!ok) return;
-    }
+  // Run the confirmed command.
+  const execute = async (cmd: OpsCommand) => {
+    setPending(null);
     setRunning(cmd.key);
     setResult(null);
     try {
@@ -77,11 +74,35 @@ export function ZoneCliPage() {
         </div>
       )}
 
-      <div className="mt-6 px-4 py-3 rounded border border-brand-200 dark:border-brand-700 bg-brand-50 dark:bg-brand-800/40 text-sm text-brand-700 dark:text-brand-200">
+      {/* Mail service access card */}
+      <div className="mt-6 flex items-center justify-between gap-4 px-4 py-3 rounded border border-brand-200 dark:border-brand-700 bg-white dark:bg-brand-900 shrink-0">
+        <div className="min-w-0">
+          <div className="text-sm font-medium text-brand-800 dark:text-brand-100">
+            Mail server (Stalwart)
+          </div>
+          <div className="text-xs text-brand-500 dark:text-brand-400 truncate">
+            {mailUrl
+              ? `Admin & webmail at ${mailUrl}`
+              : "Not deployed yet — run “deploymail”, then it appears here."}
+          </div>
+        </div>
+        {mailUrl ? (
+          <button
+            onClick={() => window.open(mailUrl, "_blank", "noopener")}
+            className="shrink-0 px-3 py-1.5 rounded bg-brand-700 dark:bg-brand-200 text-white dark:text-brand-900 text-sm font-semibold hover:bg-brand-800 dark:hover:bg-brand-100 transition-colors"
+          >
+            Open mail admin
+          </button>
+        ) : (
+          <span className="shrink-0 text-xs text-brand-400 dark:text-brand-500">
+            no URL configured
+          </span>
+        )}
+      </div>
+
+      <div className="mt-4 px-4 py-3 rounded border border-brand-200 dark:border-brand-700 bg-brand-50 dark:bg-brand-800/40 text-sm text-brand-700 dark:text-brand-200">
         These run the <span className="font-mono">zone</span> CLI on the host.
-        <span className="font-medium"> Upgrade</span> pulls the latest images,
-        refreshes config, frees DNS port 53, runs migrations, and restarts the
-        stack — the same as running <span className="font-mono">zone upgrade</span> over SSH.
+        Click a command to see exactly what it does before it runs.
       </div>
 
       {loading ? (
@@ -93,15 +114,15 @@ export function ZoneCliPage() {
           {commands.map((cmd) => (
             <button
               key={cmd.key}
-              onClick={() => run(cmd)}
+              onClick={() => setPending(cmd)}
               disabled={running !== null}
-              className={`px-4 py-2 rounded text-sm font-semibold transition-colors disabled:opacity-50 ${
+              className={`px-4 py-2 rounded text-sm font-semibold font-mono transition-colors disabled:opacity-50 ${
                 cmd.mutating
                   ? "bg-brand-700 dark:bg-brand-200 text-white dark:text-brand-900 hover:bg-brand-800 dark:hover:bg-brand-100"
                   : "border border-brand-300 dark:border-brand-600 text-brand-700 dark:text-brand-200 hover:bg-brand-100 dark:hover:bg-brand-800"
               }`}
             >
-              {running === cmd.key ? `Running ${cmd.label}…` : cmd.label}
+              {running === cmd.key ? `${cmd.label}…` : cmd.label}
             </button>
           ))}
         </div>
@@ -136,6 +157,23 @@ export function ZoneCliPage() {
               : result?.output || "(no output)"}
           </pre>
         </div>
+      )}
+
+      {pending && (
+        <ConfirmDialog
+          title={`Run “${pending.label}”?`}
+          message={
+            `${pending.description}\n\n` +
+            `Command: zone ${pending.key === "migratedb" ? "migrate" : pending.key === "backupdb" ? "backup" : pending.key === "deploymail" ? "up" : pending.label}\n` +
+            (pending.mutating
+              ? "This changes the running platform."
+              : "This is read-only and safe.")
+          }
+          confirmLabel={`Run ${pending.label}`}
+          destructive={pending.mutating}
+          onConfirm={() => execute(pending)}
+          onCancel={() => setPending(null)}
+        />
       )}
     </div>
   );

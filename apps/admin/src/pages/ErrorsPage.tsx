@@ -258,7 +258,9 @@ function ErrorDetail({
     if (!deploymentId) return;
     setAnalyzing(true);
     try {
-      const res = await adminApi.analyzeDeployment(deploymentId);
+      // Send the headline error reason too, so the AI sees both the title error
+      // and the log — and can still diagnose when no log was captured.
+      const res = await adminApi.analyzeDeployment(deploymentId, reason ?? undefined);
       setAnalysis(res.analysis);
     } catch (err) {
       // Surface failures (e.g. "AI analysis is not configured…") as a toast
@@ -275,10 +277,11 @@ function ErrorDetail({
 
   return (
     <div className="h-full flex flex-col min-h-0">
-      {/* Header — fixed */}
+      {/* Header — fixed. AI analyze lives here so it covers both the error
+          reason and the deploy log. */}
       <div className="shrink-0 flex items-start gap-3">
         <span className="mt-1.5 shrink-0 w-2.5 h-2.5 rounded-full bg-red-600" aria-hidden />
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <h2 className="text-lg font-semibold text-brand-900 dark:text-brand-50 break-words">
             {step ? `${displayApp}: failed at ${step}` : `${displayApp} — deployment failed`}
           </h2>
@@ -288,7 +291,29 @@ function ErrorDetail({
             {log?.status ? ` · ${log.status}` : ""}
           </p>
         </div>
+        {deploymentId && (
+          <button
+            onClick={runAnalyze}
+            disabled={analyzing}
+            title="Analyze the error and deploy log with AI"
+            className="shrink-0 px-3 py-1.5 rounded bg-brand-700 dark:bg-brand-200 text-white dark:text-brand-900 text-sm font-semibold hover:bg-brand-800 dark:hover:bg-brand-100 disabled:opacity-50 transition-colors"
+          >
+            {analyzing ? "Analyzing…" : "AI analyze"}
+          </button>
+        )}
       </div>
+
+      {/* AI analysis result — shown right under the header, above the error. */}
+      {analysis && (
+        <div className="shrink-0 mt-4 rounded border border-brand-200 dark:border-brand-700 bg-brand-50 dark:bg-brand-950/40 p-3">
+          <h3 className="text-xs font-semibold text-brand-500 dark:text-brand-400 uppercase tracking-wider mb-1">
+            AI analysis
+          </h3>
+          <div className="max-h-48 overflow-y-auto hide-scrollbar text-sm text-brand-800 dark:text-brand-200 whitespace-pre-wrap">
+            {analysis}
+          </div>
+        </div>
+      )}
 
       {/* Error reason — fixed */}
       {reason && (
@@ -308,30 +333,13 @@ function ErrorDetail({
           <h3 className="text-xs font-semibold text-brand-500 dark:text-brand-400 uppercase tracking-wider">
             Deploy log
           </h3>
-          <div className="flex gap-2">
-            <button
-              onClick={() => setShowDebug((d) => !d)}
-              className="px-2.5 py-1 rounded border border-brand-300 dark:border-brand-600 text-brand-600 dark:text-brand-400 text-xs font-medium hover:bg-brand-100 dark:hover:bg-brand-800 transition-colors"
-            >
-              {showDebug ? "Hide debug" : "Show debug"}
-            </button>
-            {deploymentId && (
-              <button
-                onClick={runAnalyze}
-                disabled={analyzing}
-                className="px-2.5 py-1 rounded bg-brand-700 dark:bg-brand-200 text-white dark:text-brand-900 text-xs font-semibold hover:bg-brand-800 dark:hover:bg-brand-100 disabled:opacity-50 transition-colors"
-              >
-                {analyzing ? "Analyzing…" : "AI analyze"}
-              </button>
-            )}
-          </div>
+          <button
+            onClick={() => setShowDebug((d) => !d)}
+            className="px-2.5 py-1 rounded border border-brand-300 dark:border-brand-600 text-brand-600 dark:text-brand-400 text-xs font-medium hover:bg-brand-100 dark:hover:bg-brand-800 transition-colors"
+          >
+            {showDebug ? "Hide debug" : "Show debug"}
+          </button>
         </div>
-
-        {analysis && (
-          <div className="shrink-0 mb-3 max-h-40 overflow-y-auto hide-scrollbar rounded border border-brand-200 dark:border-brand-700 bg-brand-50 dark:bg-brand-950/40 p-3 text-sm text-brand-800 dark:text-brand-200 whitespace-pre-wrap">
-            {analysis}
-          </div>
-        )}
 
         {loadingLog ? (
           <p className="text-sm text-brand-400 dark:text-brand-500">Loading log…</p>

@@ -260,14 +260,15 @@ export const adminApi = {
     return request("/v1/admin/ai/status");
   },
 
-  getSettings(): Promise<{ agentApiUrl: string; agentTokenSet: boolean }> {
+  getSettings(): Promise<{ agentApiUrl: string; agentTokenSet: boolean; agentId: string }> {
     return request("/v1/admin/settings");
   },
 
   updateSettings(payload: {
     agentApiUrl?: string;
     agentToken?: string;
-  }): Promise<{ agentApiUrl: string; agentTokenSet: boolean }> {
+    agentId?: string;
+  }): Promise<{ agentApiUrl: string; agentTokenSet: boolean; agentId: string }> {
     return request("/v1/admin/settings", {
       method: "POST",
       body: JSON.stringify(payload),
@@ -333,8 +334,12 @@ export const adminApi = {
   // Run the AI analysis over a deployment's log.
   analyzeDeployment(
     deploymentId: string,
+    errorReason?: string,
   ): Promise<{ deploymentId: string; status: string; analysis: string }> {
-    return request(`/v1/admin/deployments/${deploymentId}/analyze`, { method: "POST" });
+    return request(`/v1/admin/deployments/${deploymentId}/analyze`, {
+      method: "POST",
+      body: JSON.stringify({ errorReason }),
+    });
   },
 
   // ---- Platform ops (zone CLI) ----
@@ -369,6 +374,7 @@ export interface OpsCommand {
   key: string;
   label: string;
   mutating: boolean;
+  description: string;
 }
 
 export interface OpsResult {

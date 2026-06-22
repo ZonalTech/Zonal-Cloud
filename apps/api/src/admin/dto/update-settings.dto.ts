@@ -10,4 +10,9 @@ export class UpdateSettingsDto {
   @IsOptional()
   @IsString()
   agentToken?: string;
+
+  // Mistral agent id used by AI deploy-log analysis (e.g. ag:...).
+  @IsOptional()
+  @IsString()
+  agentId?: string;
 }
