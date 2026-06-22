@@ -12,6 +12,7 @@ import { UpdateSettingsDto } from './dto/update-settings.dto';
 import { CreateAgentTokenDto } from './dto/create-agent-token.dto';
 import { UpdateInfraSettingsDto } from './dto/update-infra-settings.dto';
 import { FrappeAdminService } from './frappe-admin.service';
+import { DnsService } from '../dns/dns.service';
 import { RunBenchActionDto, RunSqlDto, SiteAppActionDto } from './dto/root-access.dto';
 import { BulkMigrateDto } from './dto/bulk-migrate.dto';
 import * as path from 'path';
@@ -30,7 +31,25 @@ export class AdminController {
   constructor(
     private readonly adminService: AdminService,
     private readonly frappeAdmin: FrappeAdminService,
+    private readonly dns: DnsService,
   ) {}
+
+  // ---- DNS (cross-tenant) ------------------------------------------------
+
+  @Get('dns/zones')
+  listAllDnsZones() {
+    return this.dns.listAllZones();
+  }
+
+  @Get('dns/zones/:name/records')
+  listDnsRecords(@Param('name') name: string) {
+    return this.dns.listRecordsAdmin(name);
+  }
+
+  @Delete('dns/zones/:name')
+  deleteDnsZone(@CurrentUser() actor: AuthUser, @Param('name') name: string) {
+    return this.dns.deleteZoneAdmin(actor.id, name);
+  }
 
   @Get('users')
   listUsers() {

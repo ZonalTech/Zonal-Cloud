@@ -36,6 +36,11 @@ interface AuthUser {
 export class DnsController {
   constructor(private readonly dns: DnsService) {}
 
+  @Get('quota')
+  quota(@CurrentUser() user: AuthUser) {
+    return this.dns.quota(user.organizationId);
+  }
+
   @Get('zones')
   listZones(@CurrentUser() user: AuthUser) {
     return this.dns.listZones(user.organizationId);

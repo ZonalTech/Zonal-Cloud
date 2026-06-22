@@ -16,6 +16,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: "Users", to: "/users" },
   { label: "Organizations", to: "/organizations" },
   { label: "Apps", to: "/apps" },
+  { label: "DNS", to: "/dns" },
   { label: "Root Access", to: "/root-access", superadminOnly: true },
   { label: "Errors", to: "/errors" },
   { label: "Audit", to: "/audit" },

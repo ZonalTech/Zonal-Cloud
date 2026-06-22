@@ -51,6 +51,67 @@ export class DnsService {
     return zones.map((z) => ({ ...z, nameservers }));
   }
 
+  /** The org's DNS zone quota and current usage, for the dashboard. */
+  async quota(organizationId: string) {
+    const quota = await this.prisma.quota.findUnique({
+      where: { organizationId },
+    });
+    const max = quota?.maxDnsZones ?? 0;
+    const used = await this.prisma.dnsZone.count({ where: { organizationId } });
+    return { used, max, enabled: max > 0, remaining: Math.max(0, max - used) };
+  }
+
+  // ---- Admin (cross-tenant) ---------------------------------------------
+
+  /**
+   * Platform-admin view: every hosted zone across all organizations, with the
+   * owning org's name attached. Not org-scoped — guarded at the controller by
+   * the admin role.
+   */
+  async listAllZones() {
+    const zones = await this.prisma.dnsZone.findMany({
+      orderBy: { createdAt: 'desc' },
+      include: { organization: { select: { id: true, name: true } } },
+    });
+    const nameservers = this.nameservers();
+    return zones.map((z) => ({
+      id: z.id,
+      name: z.name,
+      status: z.status,
+      createdAt: z.createdAt,
+      organizationId: z.organizationId,
+      organizationName: z.organization?.name ?? z.organizationId,
+      nameservers,
+    }));
+  }
+
+  /** Admin: list a zone's records by zone name, regardless of owning org. */
+  async listRecordsAdmin(name: string) {
+    const canonical = PowerDnsClient.fromCanonical(name);
+    const zone = await this.prisma.dnsZone.findUnique({ where: { name: canonical } });
+    if (!zone) throw new NotFoundException(`DNS zone ${canonical} not found`);
+    return this.listRecords(zone.organizationId, canonical);
+  }
+
+  /** Admin: delete any zone (e.g. abuse / cleanup), regardless of owning org. */
+  async deleteZoneAdmin(actorUserId: string, name: string) {
+    const canonical = PowerDnsClient.fromCanonical(name);
+    const zone = await this.prisma.dnsZone.findUnique({ where: { name: canonical } });
+    if (!zone) throw new NotFoundException(`DNS zone ${canonical} not found`);
+
+    await this.pdns.deleteZone(zone.name);
+    await this.prisma.dnsZone.delete({ where: { id: zone.id } });
+
+    await this.audit.log({
+      actorUserId,
+      action: 'dns.zone.delete.admin',
+      target: zone.name,
+      metadata: { organizationId: zone.organizationId },
+    });
+
+    return { deleted: true };
+  }
+
   /** Look up a zone owned by this org or 404. */
   private async ownedZoneOrThrow(organizationId: string, name: string) {
     const canonical = PowerDnsClient.fromCanonical(name);

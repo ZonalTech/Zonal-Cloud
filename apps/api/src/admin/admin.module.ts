@@ -8,9 +8,10 @@ import { AuthModule } from '../auth/auth.module';
 import { AuditService } from '../common/audit.service';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { PlatformSettingsService } from '../common/platform-settings.service';
+import { DnsModule } from '../dns/dns.module';
 
 @Module({
-  imports: [DeployModule, AuthModule, NotificationsModule],
+  imports: [DeployModule, AuthModule, NotificationsModule, DnsModule],
   controllers: [AdminController],
   providers: [
     AdminService,

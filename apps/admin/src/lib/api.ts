@@ -326,4 +326,50 @@ export const adminApi = {
   ): Promise<{ deploymentId: string; status: string; analysis: string }> {
     return request(`/v1/admin/deployments/${deploymentId}/analyze`, { method: "POST" });
   },
+
+  // ---- DNS (cross-tenant) ----
+  listDnsZones(): Promise<AdminDnsZone[]> {
+    return request("/v1/admin/dns/zones");
+  },
+
+  listDnsRecords(zone: string): Promise<DnsRecord[]> {
+    return request(`/v1/admin/dns/zones/${encodeURIComponent(zone)}/records`);
+  },
+
+  deleteDnsZone(zone: string): Promise<{ deleted: boolean }> {
+    return request(`/v1/admin/dns/zones/${encodeURIComponent(zone)}`, {
+      method: "DELETE",
+    });
+  },
 };
+
+// ---- DNS types (admin / cross-tenant) ----
+export const DNS_RECORD_TYPES = [
+  "A",
+  "AAAA",
+  "CNAME",
+  "MX",
+  "TXT",
+  "NS",
+  "SRV",
+  "CAA",
+] as const;
+export type DnsRecordType = (typeof DNS_RECORD_TYPES)[number];
+
+export interface AdminDnsZone {
+  id: string;
+  name: string;
+  status: string;
+  createdAt: string;
+  organizationId: string;
+  organizationName: string;
+  nameservers: string[];
+}
+
+export interface DnsRecord {
+  name: string;
+  type: DnsRecordType;
+  ttl: number;
+  records: string[];
+  managed?: boolean;
+}

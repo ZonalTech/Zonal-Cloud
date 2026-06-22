@@ -475,7 +475,18 @@ export interface DnsRecord {
   managed?: boolean;
 }
 
+export interface DnsQuota {
+  used: number;
+  max: number;
+  enabled: boolean;
+  remaining: number;
+}
+
 export const dnsApi = {
+  quota(): Promise<DnsQuota> {
+    return request<DnsQuota>("/v1/dns/quota");
+  },
+
   listZones(): Promise<DnsZone[]> {
     return request<DnsZone[]>("/v1/dns/zones");
   },

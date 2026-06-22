@@ -5,6 +5,7 @@ import {
   type DnsZone,
   type DnsRecord,
   type DnsRecordType,
+  type DnsQuota,
 } from "../lib/api";
 import { useToast } from "../context/ToastContext";
 
@@ -42,6 +43,14 @@ export function DnsPage() {
 
   const [newZone, setNewZone] = useState("");
   const [creating, setCreating] = useState(false);
+  const [quota, setQuota] = useState<DnsQuota | null>(null);
+
+  const loadQuota = useCallback(() => {
+    dnsApi
+      .quota()
+      .then(setQuota)
+      .catch(() => setQuota(null));
+  }, []);
 
   const loadZones = useCallback(() => {
     setLoading(true);
@@ -59,7 +68,11 @@ export function DnsPage() {
 
   useEffect(() => {
     loadZones();
-  }, [loadZones]);
+    loadQuota();
+  }, [loadZones, loadQuota]);
+
+  const atLimit = quota ? quota.enabled && quota.remaining <= 0 : false;
+  const dnsDisabled = quota ? !quota.enabled : false;
 
   const createZone = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -71,6 +84,7 @@ export function DnsPage() {
       setNewZone("");
       setZones((z) => [zone, ...z]);
       setSelected(zone.name);
+      loadQuota();
       success(`Zone ${zone.name} created`);
     } catch (err) {
       toastError(err instanceof Error ? err.message : "Failed to create zone");
@@ -86,6 +100,7 @@ export function DnsPage() {
       await dnsApi.deleteZone(name);
       setZones((z) => z.filter((x) => x.name !== name));
       setSelected((curr) => (curr === name ? null : curr));
+      loadQuota();
       success(`Zone ${name} deleted`);
     } catch (err) {
       toastError(err instanceof Error ? err.message : "Failed to delete zone");
@@ -103,8 +118,20 @@ export function DnsPage() {
         <p className="text-sm text-brand-500 dark:text-brand-400 mt-1">
           Host your domain's DNS on our nameservers. Point your registrar's NS
           records at the nameservers shown for each zone.
+          {quota?.enabled && (
+            <span className="ml-1 text-brand-700 dark:text-brand-200 font-medium">
+              {quota.used} of {quota.max} zone{quota.max === 1 ? "" : "s"} used.
+            </span>
+          )}
         </p>
       </div>
+
+      {dnsDisabled && (
+        <p className="mb-4 text-sm text-brand-700 dark:text-brand-200 bg-brand-50 dark:bg-brand-800/40 rounded px-4 py-3 border border-brand-200 dark:border-brand-700">
+          DNS hosting isn't enabled on your account yet. Contact billing to add
+          the DNS add-on, then you can host your domains here.
+        </p>
+      )}
 
       {loadError && (
         <p className="mb-4 text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 rounded px-4 py-3 border border-red-200 dark:border-red-800">
@@ -115,17 +142,27 @@ export function DnsPage() {
       <div className="flex gap-4 min-h-0 flex-1">
         {/* LEFT: zones */}
         <div className="w-72 shrink-0 flex flex-col min-h-0">
-          <form onSubmit={createZone} className="flex gap-2 mb-3">
+          <form onSubmit={createZone} className="flex gap-2 mb-1">
             <input
               className={inputCls}
               placeholder="example.com"
               value={newZone}
               onChange={(e) => setNewZone(e.target.value)}
+              disabled={dnsDisabled || atLimit}
             />
-            <button className={btnPrimary} disabled={creating || !newZone.trim()}>
+            <button
+              className={btnPrimary}
+              disabled={creating || !newZone.trim() || dnsDisabled || atLimit}
+            >
               {creating ? "…" : "Add"}
             </button>
           </form>
+          {atLimit && (
+            <p className="mb-3 text-xs text-yellow-600 dark:text-yellow-400">
+              Zone limit reached ({quota?.used}/{quota?.max}). Upgrade to host
+              more domains.
+            </p>
+          )}
 
           {loading ? (
             <div className="flex items-center gap-2 text-brand-500 dark:text-brand-400 text-sm">

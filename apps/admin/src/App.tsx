@@ -16,6 +16,7 @@ import { AppsPage } from "./pages/AppsPage";
 import { RootAccessPage } from "./pages/RootAccessPage";
 import { AuditPage } from "./pages/AuditPage";
 import { ErrorsPage } from "./pages/ErrorsPage";
+import { DnsPage } from "./pages/DnsPage";
 import { SettingsPage } from "./pages/SettingsPage";
 
 function ProtectedLayout() {
@@ -51,6 +52,7 @@ function AppRoutes() {
         <Route path="/apps" element={<AppsPage />} />
         <Route path="/root-access" element={<RootAccessPage />} />
         <Route path="/errors" element={<ErrorsPage />} />
+        <Route path="/dns" element={<DnsPage />} />
         <Route path="/audit" element={<AuditPage />} />
         <Route path="/settings" element={<SettingsPage />} />
       </Route>
