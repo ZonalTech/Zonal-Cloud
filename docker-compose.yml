@@ -52,7 +52,7 @@ services:
     # v3.7+ works with Docker Engine 28/29 (API >= 1.44). Older images (v3.3) fail
     # with "client version 1.24 is too old"; the DOCKER_API_VERSION env below also
     # forces a compatible API version for the provider.
-    image: traefik:v3.7.5
+    image: ${MIRROR_REGISTRY:-ghcr.io/zonaltech/zonal-cloud/mirror}/traefik:v3.7.5
     container_name: traefik
     restart: unless-stopped
     environment:
@@ -85,7 +85,7 @@ services:
   # SPEC section 5: port 5432
   # ----------------------------------------------------------------
   postgres:
-    image: postgres:16-alpine
+    image: ${MIRROR_REGISTRY:-ghcr.io/zonaltech/zonal-cloud/mirror}/postgres:16-alpine
     container_name: postgres
     restart: unless-stopped
     environment:
@@ -113,7 +113,7 @@ services:
   #   - host=127.0.0.1 port=3306  (from the host-run API for DDL)
   # ----------------------------------------------------------------
   mariadb:
-    image: mariadb:10.6
+    image: ${MIRROR_REGISTRY:-ghcr.io/zonaltech/zonal-cloud/mirror}/mariadb:10.6
     container_name: mariadb
     restart: unless-stopped
     environment:
@@ -140,7 +140,7 @@ services:
   # SPEC section 5: port 6379
   # ----------------------------------------------------------------
   redis:
-    image: redis:7-alpine
+    image: ${MIRROR_REGISTRY:-ghcr.io/zonaltech/zonal-cloud/mirror}/redis:7-alpine
     container_name: redis
     restart: unless-stopped
     volumes:
@@ -173,7 +173,7 @@ services:
   # See docs/dns.md for the one-time bootstrap (create db + load schema).
   # ----------------------------------------------------------------
   pdns:
-    image: powerdns/pdns-auth-49:latest
+    image: ${MIRROR_REGISTRY:-ghcr.io/zonaltech/zonal-cloud/mirror}/pdns-auth-49:latest
     container_name: pdns
     restart: unless-stopped
     depends_on:
@@ -211,7 +211,7 @@ services:
   # Remove or comment out this service once the routing is verified.
   # ----------------------------------------------------------------
   whoami:
-    image: traefik/whoami
+    image: ${MIRROR_REGISTRY:-ghcr.io/zonaltech/zonal-cloud/mirror}/whoami:latest
     container_name: whoami
     restart: unless-stopped
     networks:
@@ -232,7 +232,7 @@ services:
   # open the dashboard, check status/logs, and redeploy.
   # ----------------------------------------------------------------
   fallback:
-    image: nginx:1.27-alpine
+    image: ${MIRROR_REGISTRY:-ghcr.io/zonaltech/zonal-cloud/mirror}/nginx:1.27-alpine
     container_name: zonal-fallback
     restart: unless-stopped
     environment:
@@ -261,7 +261,7 @@ services:
   # returns the reset link in the response. This just gives a real inbox.
   # ----------------------------------------------------------------
   mailpit:
-    image: axllent/mailpit:latest
+    image: ${MIRROR_REGISTRY:-ghcr.io/zonaltech/zonal-cloud/mirror}/mailpit:latest
     container_name: mailpit
     restart: unless-stopped
     ports:
@@ -279,7 +279,7 @@ services:
   # First-run admin credentials come from the .env (seeded by the zone CLI).
   # ----------------------------------------------------------------
   stalwart:
-    image: stalwartlabs/stalwart:latest
+    image: ${MIRROR_REGISTRY:-ghcr.io/zonaltech/zonal-cloud/mirror}/stalwart:latest
     container_name: stalwart
     restart: unless-stopped
     environment:

@@ -137,6 +137,11 @@ export function buildEnv(opts: GenerateEnvOptions = {}): EnvMap {
     PDNS_SERVER_ID: keep('PDNS_SERVER_ID', 'localhost'),
     DNS_BASE_DOMAIN: dnsBaseDomain,
     DNS_NAMESERVERS: keep('DNS_NAMESERVERS', `ns1.${dnsBaseDomain},ns2.${dnsBaseDomain}`),
+    // Base-image mirror (GHCR). The platform's public base images (postgres,
+    // redis, traefik, pdns, stalwart, …) are mirrored into GHCR so the server
+    // never pulls from Docker Hub (rate-limited). Override only for a private
+    // mirror or to pull from Hub directly.
+    MIRROR_REGISTRY: keep('MIRROR_REGISTRY', 'ghcr.io/zonaltech/zonal-cloud/mirror'),
     // Managed mail (Stalwart). Admin user defaults to the operator email when
     // known (ACME/superadmin), else "admin"; password is generated + preserved.
     MAIL_HOST: mailHost,
@@ -164,7 +169,7 @@ export function serializeEnv(env: EnvMap): string {
     ['Routing / frontend', ['DOMAIN', 'API_HOST', 'DASHBOARD_HOST', 'ADMIN_HOST', 'VITE_API_URL', 'DASHBOARD_URL']],
     ['Managed DNS (PowerDNS)', ['PDNS_API_KEY', 'PDNS_DB', 'PDNS_API_URL', 'PDNS_SERVER_ID', 'DNS_BASE_DOMAIN', 'DNS_NAMESERVERS']],
     ['Managed mail (Stalwart)', ['MAIL_HOST', 'MAIL_URL', 'MAIL_ADMIN_USER', 'MAIL_ADMIN_PASSWORD']],
-    ['Registry / TLS', ['ZONAL_REGISTRY', 'ZONAL_TAG', 'ACME_EMAIL', 'ZONAL_DATA_DIR']],
+    ['Registry / TLS', ['ZONAL_REGISTRY', 'ZONAL_TAG', 'MIRROR_REGISTRY', 'ACME_EMAIL', 'ZONAL_DATA_DIR']],
   ];
   const written = new Set<string>();
   const lines: string[] = [

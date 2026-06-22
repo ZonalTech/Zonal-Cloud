@@ -8,6 +8,7 @@
  * `compose run --rm api ...` (one-shot) or `compose exec api ...` (live).
  */
 import { Ctx, composeFiles } from './context';
+import { ui } from './ui';
 
 const ENV = { COMPOSE_PROJECT_NAME: 'zonal' } as NodeJS.ProcessEnv;
 
@@ -60,12 +61,31 @@ export async function createSuperadmin(
   );
 }
 
-/** Pull the latest platform images from the registry. */
-export async function pull(ctx: Ctx): Promise<number> {
-  return ctx.docker.composeStream(composeArgs(ctx, ['pull']), {
-    cwd: ctx.paths.dataDir,
-    env: ENV,
-  });
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Pull the latest platform images from the registry.
+ *
+ * Docker Hub anonymous pulls are rate-limited and its token endpoint sometimes
+ * returns a transient 404 mid-pull, which aborts a single bulk `compose pull`.
+ * So we retry the bulk pull a few times (already-pulled layers are cached, so
+ * retries are cheap), with a short backoff to let a transient limit reset.
+ */
+export async function pull(ctx: Ctx, attempts = 3): Promise<number> {
+  let code = 0;
+  for (let i = 1; i <= attempts; i++) {
+    code = await ctx.docker.composeStream(composeArgs(ctx, ['pull']), {
+      cwd: ctx.paths.dataDir,
+      env: ENV,
+    });
+    if (code === 0) return 0;
+    if (i < attempts) {
+      ui.warn(`Image pull failed (attempt ${i}/${attempts}) — retrying in 15s. ` +
+        `If this persists, run "docker login" on the server to lift Docker Hub rate limits.`);
+      await sleep(15_000);
+    }
+  }
+  return code;
 }
 
 /**
