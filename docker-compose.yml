@@ -283,9 +283,10 @@ services:
     container_name: stalwart
     restart: unless-stopped
     environment:
-      # Bootstrap the fallback admin on first run (ignored once initialized).
-      FALLBACK_ADMIN_USER: ${MAIL_ADMIN_USER:-admin}
-      FALLBACK_ADMIN_SECRET: ${MAIL_ADMIN_PASSWORD:-changeme-mail-admin}
+      # Stalwart 0.16+ pins the recovery/bootstrap admin via STALWART_RECOVERY_ADMIN
+      # in "user:password" form, applied on every start. Without it Stalwart
+      # generates a random temp password (printed once in the logs).
+      STALWART_RECOVERY_ADMIN: ${MAIL_ADMIN_USER:-admin}:${MAIL_ADMIN_PASSWORD:-changeme-mail-admin}
     volumes:
       - stalwart_data:/opt/stalwart-mail
     ports:

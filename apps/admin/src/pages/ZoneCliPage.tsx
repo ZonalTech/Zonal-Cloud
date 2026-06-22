@@ -23,38 +23,28 @@ export function ZoneCliPage() {
   const [result, setResult] = useState<(OpsResult & { key: string }) | null>(null);
   const [pending, setPending] = useState<OpsCommand | null>(null);
 
-  // Mail admin credential form.
-  const [mailUser, setMailUser] = useState("admin");
-  const [mailPass, setMailPass] = useState("");
-  const [savingMail, setSavingMail] = useState(false);
+  // Mail admin credentials (read-only — shown on request).
+  const [mailCreds, setMailCreds] = useState<{
+    username: string;
+    password: string | null;
+    source: "pinned" | "bootstrap-log" | "unknown";
+  } | null>(null);
+  const [loadingCreds, setLoadingCreds] = useState(false);
 
   const mailUrl = getMailUrl();
 
-  async function saveMailAdmin() {
-    if (mailPass.length < 8) {
-      toastError("Mail password must be at least 8 characters.");
-      return;
-    }
-    setSavingMail(true);
-    setRunning("mailadmin"); // shows the "Running…" placeholder in the console
-    setResult(null);
+  async function showMailAdmin() {
+    setLoadingCreds(true);
     try {
-      const res = await adminApi.setMailAdmin(mailUser.trim() || "admin", mailPass);
-      setMailPass("");
-      // Surface the container recreate log in the same Output console so you can
-      // watch the mail server come back up.
-      setResult({
-        key: "mailadmin",
-        command: "recreate stalwart (apply mail admin)",
-        output: res.output || "(no output)",
-        exitCode: 0,
-      });
-      success(`Mail admin set for ${res.username}. The mail server is restarting.`);
+      const creds = await adminApi.getMailAdmin();
+      setMailCreds(creds);
+      if (!creds.password) {
+        toastError("Couldn't read the mail admin password — check `docker logs stalwart`.");
+      }
     } catch (e) {
-      toastError(e instanceof Error ? e.message : "Failed to set mail admin");
+      toastError(e instanceof Error ? e.message : "Failed to read mail admin");
     } finally {
-      setSavingMail(false);
-      setRunning(null);
+      setLoadingCreds(false);
     }
   }
 
@@ -133,46 +123,54 @@ export function ZoneCliPage() {
         )}
       </div>
 
-      {/* Mail admin credentials — set/reset the Stalwart admin login. */}
+      {/* Mail admin credentials — reveal the current Stalwart admin login. */}
       <div className="mt-3 px-4 py-3 rounded border border-brand-200 dark:border-brand-700 bg-white dark:bg-brand-900 shrink-0">
-        <div className="text-sm font-medium text-brand-800 dark:text-brand-100 mb-1">
-          Mail admin login
-        </div>
-        <p className="text-xs text-brand-500 dark:text-brand-400 mb-2">
-          Set or reset the mail server's admin username & password. Applies
-          immediately (the mail server restarts). Use this when the seeded
-          password isn't working.
-        </p>
-        <div className="flex flex-wrap items-end gap-2">
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-brand-500 dark:text-brand-400">Username</span>
-            <input
-              value={mailUser}
-              onChange={(e) => setMailUser(e.target.value)}
-              placeholder="admin"
-              autoComplete="off"
-              className="w-48 px-3 py-2 rounded border border-brand-300 dark:border-brand-600 bg-white dark:bg-brand-800 text-brand-900 dark:text-brand-50 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-            />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-brand-500 dark:text-brand-400">New password (min 8)</span>
-            <input
-              type="password"
-              value={mailPass}
-              onChange={(e) => setMailPass(e.target.value)}
-              placeholder="••••••••"
-              autoComplete="new-password"
-              className="w-56 px-3 py-2 rounded border border-brand-300 dark:border-brand-600 bg-white dark:bg-brand-800 text-brand-900 dark:text-brand-50 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-            />
-          </label>
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-sm font-medium text-brand-800 dark:text-brand-100">
+              Mail admin login
+            </div>
+            <p className="text-xs text-brand-500 dark:text-brand-400">
+              The current admin credentials for the mail server. Use them to sign
+              in at the mail admin UI.
+            </p>
+          </div>
           <button
-            onClick={saveMailAdmin}
-            disabled={savingMail || mailPass.length < 8}
-            className="px-4 py-2 rounded bg-brand-700 dark:bg-brand-200 text-white dark:text-brand-900 text-sm font-semibold hover:bg-brand-800 dark:hover:bg-brand-100 disabled:opacity-50 transition-colors"
+            onClick={showMailAdmin}
+            disabled={loadingCreds}
+            className="shrink-0 px-3 py-1.5 rounded border border-brand-300 dark:border-brand-600 text-brand-700 dark:text-brand-200 text-sm font-medium hover:bg-brand-100 dark:hover:bg-brand-800 disabled:opacity-50 transition-colors"
           >
-            {savingMail ? "Saving…" : "Set mail admin"}
+            {loadingCreds ? "Loading…" : mailCreds ? "Refresh" : "Show admin password"}
           </button>
         </div>
+
+        {mailCreds && (
+          <div className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
+            <div>
+              <span className="text-xs text-brand-500 dark:text-brand-400 mr-2">Username</span>
+              <span className="font-mono text-brand-900 dark:text-brand-50">{mailCreds.username}</span>
+            </div>
+            <div>
+              <span className="text-xs text-brand-500 dark:text-brand-400 mr-2">Password</span>
+              {mailCreds.password ? (
+                <span className="font-mono text-brand-900 dark:text-brand-50 select-all">
+                  {mailCreds.password}
+                </span>
+              ) : (
+                <span className="text-brand-400 dark:text-brand-500">
+                  unknown — run <span className="font-mono">docker logs stalwart</span>
+                </span>
+              )}
+            </div>
+            <span className="text-xs text-brand-400 dark:text-brand-500">
+              {mailCreds.source === "pinned"
+                ? "(pinned recovery admin)"
+                : mailCreds.source === "bootstrap-log"
+                  ? "(temporary bootstrap password — complete setup in the mail UI)"
+                  : ""}
+            </span>
+          </div>
+        )}
       </div>
 
       <div className="mt-4 px-4 py-3 rounded border border-brand-200 dark:border-brand-700 bg-brand-50 dark:bg-brand-800/40 text-sm text-brand-700 dark:text-brand-200">

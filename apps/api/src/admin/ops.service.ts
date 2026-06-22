@@ -216,42 +216,30 @@ export class OpsService {
   }
 
   /**
-   * Set the Stalwart mail server's admin login (user + password).
+   * Get the Stalwart mail server's current admin credentials to show the user.
    *
-   * Stalwart's admin credentials are managed by the FALLBACK_ADMIN_USER /
-   * FALLBACK_ADMIN_SECRET environment variables, which it re-applies on EVERY
-   * startup (overriding any value stored in its data backend). Editing the
-   * on-disk config.toml does NOT work — Stalwart reads the admin from its
-   * internal store, which the env override wins over. So the reliable reset is:
+   * Stalwart 0.16+ does NOT use FALLBACK_ADMIN_*. The recovery/bootstrap admin
+   * is pinned via STALWART_RECOVERY_ADMIN="user:password" (applied every start);
+   * if unset, Stalwart generates a RANDOM temporary password and prints it once
+   * in its logs ("Stalwart bootstrap mode … password: <pw>").
    *
-   *   1. write MAIL_ADMIN_USER / MAIL_ADMIN_PASSWORD (PLAINTEXT — Stalwart hashes
-   *      it itself) into the host .env, and
-   *   2. recreate the stalwart container so it boots with the new env.
+   * So we report the active credentials by, in order:
+   *   1. the pinned STALWART_RECOVERY_ADMIN from the container's env, else
+   *   2. the temporary password parsed from the container logs, else
+   *   3. unknown (tell the user to check `docker logs stalwart`).
    *
-   * Both are done from a one-shot docker:cli helper that mounts the host .env
-   * and the docker socket (the API container can't touch the host FS directly).
+   * Read-only: this never changes anything, it just surfaces the password.
    */
-  async setMailAdmin(
-    actorUserId: string,
-    username: string,
-    password: string,
-  ): Promise<{ ok: true; username: string; output: string }> {
-    const user = (username || 'admin').trim();
-    if (!/^[A-Za-z0-9@._-]{1,128}$/.test(user)) {
-      throw new BadRequestException({ code: 'BAD_USER', message: 'Invalid admin username.' });
-    }
-    // Stalwart hashes the secret itself, so we store/forward plaintext. Forbid
-    // characters that would break the dotenv line or the shell.
-    if (!password || password.length < 8 || /[\r\n"'\\$`]/.test(password)) {
-      throw new BadRequestException({
-        code: 'WEAK_PASSWORD',
-        message: 'Password must be at least 8 characters and not contain quotes, backslashes, $ or backticks.',
-      });
-    }
-
-    // Confirm mail is deployed.
+  async getMailAdmin(): Promise<{
+    username: string;
+    password: string | null;
+    source: 'pinned' | 'bootstrap-log' | 'unknown';
+  }> {
+    let container: Docker.Container;
+    let info: Docker.ContainerInspectInfo;
     try {
-      await this.docker.getContainer('stalwart').inspect();
+      container = this.docker.getContainer('stalwart');
+      info = await container.inspect();
     } catch {
       throw new BadRequestException({
         code: 'MAIL_NOT_DEPLOYED',
@@ -259,88 +247,45 @@ export class OpsService {
       });
     }
 
-    // Update the two keys in the host .env (idempotent: replace if present, else
-    // append), then recreate just the stalwart service so FALLBACK_ADMIN_* take
-    // effect. Values passed base64 to avoid any quoting/escaping issues.
-    const b64user = Buffer.from(user, 'utf8').toString('base64');
-    const b64pass = Buffer.from(password, 'utf8').toString('base64');
-    const envFile = `${this.dataDir}/.env`;
-    const setKey = (key: string, b64: string) =>
-      `V=$(echo "${b64}" | base64 -d); ` +
-      `if grep -q "^${key}=" "${envFile}"; then ` +
-      `  grep -v "^${key}=" "${envFile}" > "${envFile}.tmp" && mv "${envFile}.tmp" "${envFile}"; ` +
-      `fi; ` +
-      `printf "%s=%s\\n" "${key}" "$V" >> "${envFile}"; `;
+    // 1. Pinned recovery admin from env, e.g. STALWART_RECOVERY_ADMIN=admin:secret.
+    const envs = info.Config?.Env ?? [];
+    const pin = envs
+      .map((e) => /^STALWART_RECOVERY_ADMIN=(.*)$/.exec(e)?.[1])
+      .find((v): v is string => !!v);
+    if (pin && pin.includes(':')) {
+      const idx = pin.indexOf(':');
+      const u = pin.slice(0, idx);
+      const p = pin.slice(idx + 1);
+      // Treat the shipped placeholder as "not really set".
+      if (p && p !== 'changeme-mail-admin') {
+        return { username: u || 'admin', password: p, source: 'pinned' };
+      }
+    }
 
-    const composeFlags =
-      `-f docker-compose.yml -f docker-compose.prod.yml` +
-      ` $( [ -n "$(grep -E '^DOMAIN=.+' "${envFile}")" ] && echo '-f docker-compose.vps.yml' )`;
-
-    const script =
-      'set -e; ' +
-      `cd ${this.dataDir}; ` +
-      setKey('MAIL_ADMIN_USER', b64user) +
-      setKey('MAIL_ADMIN_PASSWORD', b64pass) +
-      // Recreate only stalwart so it boots with the new FALLBACK_ADMIN_* env.
-      `COMPOSE_PROJECT_NAME=zonal docker compose ${composeFlags} up -d --force-recreate --no-deps stalwart; ` +
-      'echo "mail admin updated and stalwart recreated"';
-
-    await this.pullIfMissing(this.helperImage);
-    const helper = await this.docker.createContainer({
-      Image: this.helperImage,
-      Cmd: ['sh', '-lc', script],
-      Env: [`ZONAL_DATA_DIR=${this.dataDir}`],
-      WorkingDir: this.dataDir,
-      HostConfig: {
-        AutoRemove: false,
-        Binds: [
-          '/var/run/docker.sock:/var/run/docker.sock',
-          `${this.dataDir}:${this.dataDir}`,
-        ],
-        NetworkMode: 'zonal_net',
-      },
-    });
-
-    let ok = false;
-    let out = '';
+    // 2. Parse the temporary bootstrap password from the container logs.
     try {
-      const stream = await helper.attach({ stream: true, stdout: true, stderr: true });
-      const chunks: Buffer[] = [];
-      const done = new Promise<void>((resolve) => {
-        stream.on('data', (c: Buffer) => chunks.push(c));
-        stream.on('end', () => resolve());
-        stream.on('error', () => resolve());
-      });
-      await helper.start();
-      const res = await helper.wait();
-      ok = (res.StatusCode ?? 1) === 0;
-      await done;
-      out = Buffer.concat(chunks).toString('utf8').slice(-2000);
-    } finally {
-      await helper.remove({ force: true }).catch(() => undefined);
+      const buf = (await container.logs({
+        stdout: true,
+        stderr: true,
+        tail: 200,
+      })) as unknown as Buffer;
+      const text = buf
+        .toString('utf8')
+        .replace(/[\x00-\x08\x0b-\x1f]/g, (m) => (m === '\n' ? m : ' '));
+      const userM = /username:\s*([^\s]+)/i.exec(text);
+      const passM = /password:\s*([^\s]+)/i.exec(text);
+      if (passM) {
+        return {
+          username: userM?.[1] || 'admin',
+          password: passM[1],
+          source: 'bootstrap-log',
+        };
+      }
+    } catch {
+      /* fall through */
     }
 
-    if (!ok) {
-      this.logger.warn(`setMailAdmin helper failed: ${out}`);
-      throw new BadRequestException({
-        code: 'MAIL_CONFIG_FAILED',
-        message: 'Could not update mail admin (recreate failed). Check API logs.',
-      });
-    }
-
-    await this.audit.log({
-      actorUserId,
-      action: 'platform.mail.set_admin',
-      target: 'stalwart',
-      metadata: { username: user },
-    });
-
-    // Strip Docker stream-mux control chars (keep \n/\t) so the UI shows the
-    // clean recreate log, e.g. "Container stalwart Recreated / Started".
-    const output = out
-      .replace(/[\x00-\x08\x0b-\x1f]/g, (m) => (m === '\n' || m === '\t' ? m : ''))
-      .trim();
-    return { ok: true, username: user, output };
+    return { username: 'admin', password: null, source: 'unknown' };
   }
 
   /** Pull the helper image if it isn't present locally. */

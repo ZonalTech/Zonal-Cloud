@@ -353,14 +353,12 @@ export const adminApi = {
     });
   },
 
-  setMailAdmin(
-    username: string,
-    password: string,
-  ): Promise<{ ok: true; username: string; output: string }> {
-    return request("/v1/admin/ops/mail-admin", {
-      method: "POST",
-      body: JSON.stringify({ username, password }),
-    });
+  getMailAdmin(): Promise<{
+    username: string;
+    password: string | null;
+    source: "pinned" | "bootstrap-log" | "unknown";
+  }> {
+    return request("/v1/admin/ops/mail-admin");
   },
 
   // ---- DNS (cross-tenant) ----
