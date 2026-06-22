@@ -24,7 +24,22 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
+
+      # Skip cleanly when deploy config is absent (e.g. the platform monorepo has
+      # nothing to deploy). A manual run via workflow_dispatch still requires config.
+      - name: Check deploy config
+        id: cfg
+        env:
+          ZONAL_APP_ID: ${{ inputs.app_id || vars.ZONAL_APP_ID }}
+          ZONAL_TOKEN: ${{ secrets.ZONAL_TOKEN }}
+        run: |
+          if [ -z "$ZONAL_APP_ID" ] || [ -z "$ZONAL_TOKEN" ]; then
+            echo "::notice::Deploy config not set (ZONAL_APP_ID and/or ZONAL_TOKEN missing) — nothing to deploy. Skipping."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
 
       # Optional: add build/test steps here before deploying.
       # Example (uncomment when a build is present):
@@ -40,6 +55,7 @@ jobs:
 
       - name: Resolve app ID
         id: resolve
+        if: steps.cfg.outputs.configured == 'true'
         run: |
           APP_ID="${{ inputs.app_id || vars.ZONAL_APP_ID }}"
           if [ -z "$APP_ID" ]; then
@@ -50,6 +66,7 @@ jobs:
 
       - name: Deploy to Zonal Cloud
         id: deploy
+        if: steps.cfg.outputs.configured == 'true'
         env:
           ZONAL_TOKEN: ${{ secrets.ZONAL_TOKEN }}
           ZONAL_API_BASE: ${{ vars.ZONAL_API_BASE }}
@@ -101,7 +118,7 @@ jobs:
           echo "Initial status: ${DEPLOY_STATUS}"
 
       - name: Print deployment summary
-        if: success()
+        if: success() && steps.cfg.outputs.configured == 'true'
         env:
           APP_ID: ${{ steps.resolve.outputs.app_id }}
           DEPLOYMENT_ID: ${{ steps.deploy.outputs.deployment_id }}
